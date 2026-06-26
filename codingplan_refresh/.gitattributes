@@ -1,0 +1,12 @@
+# Windows 批处理脚本必须使用 CRLF 行尾，否则 cmd.exe 解析不可靠
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell 脚本必须使用 LF 行尾，否则 macOS/Linux 执行会报错
+*.sh text eol=lf
+
+# 仓库默认策略（避免 autocrlf 干扰二进制与跨平台文本）
+*.dart text
+*.yaml text
+*.json text
+*.md text
