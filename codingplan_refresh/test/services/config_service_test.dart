@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:codingplan_refresh/models/app_config.dart';
 import 'package:codingplan_refresh/services/config_service.dart';
+import 'package:codingplan_refresh/utils/aes.dart';
 
 void main() {
   late Directory tmpDir;
@@ -58,11 +60,21 @@ void main() {
     expect(File('${tmpDir.path}${Platform.pathSeparator}config.dat').existsSync(), isTrue);
   });
 
-  test('JSON 字段为 PascalCase', () {
+  test('JSON 字段为 PascalCase（与旧 MAUI 兼容）', () {
     svc.save(AppConfig(apiKey: 'sk-x'));
-    // 通过 decrypt 读回 JSON 验证字段名
+    // 解密 config.dat 后直接断言序列化出的 JSON key 为 PascalCase，
+    // 防止误改为 camelCase 导致旧 MAUI config.dat 无法被读取（迁移兼容性回归守卫）。
     final bytes = File('${tmpDir.path}${Platform.pathSeparator}config.dat').readAsBytesSync();
-    // 重新加载即验证了反序列化；这里再确认默认 model
-    expect(svc.load().model, 'glm-5.1');
+    final json = Aes256Cbc.decrypt(bytes);
+    final map = jsonDecode(json) as Map<String, dynamic>;
+    expect(map.containsKey('IsAlwaysOnTop'), isTrue);
+    expect(map.containsKey('ApiUrl'), isTrue);
+    expect(map.containsKey('ApiKey'), isTrue);
+    expect(map.containsKey('Model'), isTrue);
+    expect(map.containsKey('LastAutoTriggerKey'), isTrue);
+    expect(map.containsKey('IsCollapsed'), isTrue);
+    // camelCase 不应出现
+    expect(map.containsKey('isAlwaysOnTop'), isFalse);
+    expect(map.containsKey('apiKey'), isFalse);
   });
 }

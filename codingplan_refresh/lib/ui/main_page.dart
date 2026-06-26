@@ -51,6 +51,9 @@ class _MainPageState extends State<MainPage> {
   late AppConfig _config;
   bool _collapsed = false;
   bool _isBusy = false;
+  // 重试循环重入守卫：与 _isBusy 分工——_isBusy 管单次尝试（防手动+自动并发），
+  // _isRetrying 管整个重试循环（防多次自动触发并发进入 _callLlmWithRetry）。
+  bool _isRetrying = false;
   bool _showConfig = false;
   bool _showResult = false;
   String _resultText = '';
@@ -158,10 +161,23 @@ class _MainPageState extends State<MainPage> {
   /// 最多尝试 3 次，每次间隔 5s；某次成功即跳出。`_callLlmOnce` 每次 finally
   /// 复位 `_isBusy`，故下次循环进入时 `_isBusy=false` 能正常执行（修复了旧实现
   /// 递归重试时 `_isBusy` 仍为 true、导致重试永不执行的死代码）。
+  ///
+  /// 重入守卫 `_isRetrying`：自动触发失败时 `_callLlmOnce` 会清空
+  /// `lastAutoTriggerKey`（catch 里），6s 后的 `_onTriggerTick` 会重新命中
+  /// `checkTrigger` 并启动第二个并发的 `_callLlmWithRetry`——此处直接 return 挡掉。
+  /// 注意 `_isRetrying` 与 `_isBusy` 是两个不同标志：`_isRetrying` 锁整个重试循环，
+  /// `_isBusy` 锁单次尝试；手动触发的 `_callLlmOnce(manual:true)` 不受 `_isRetrying`
+  /// 影响（但受 `_isBusy` 影响）。
   Future<void> _callLlmWithRetry() async {
-    for (int attempt = 1; attempt <= 3; attempt++) {
-      if (await _callLlmOnce(manual: false)) break;
-      if (attempt < 3) await Future.delayed(const Duration(seconds: 5));
+    if (_isRetrying) return;
+    _isRetrying = true;
+    try {
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        if (await _callLlmOnce(manual: false)) break;
+        if (attempt < 3) await Future.delayed(const Duration(seconds: 5));
+      }
+    } finally {
+      _isRetrying = false;
     }
   }
 
