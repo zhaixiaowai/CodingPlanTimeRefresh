@@ -36,6 +36,13 @@ class LocalizationService {
     'tokenWeekLabel': {'zh': 'Token(周)', 'en': 'Token(Week)'},
     // MCPMonthLabel
     'mcpMonthLabel': {'zh': 'MCP(月)', 'en': 'MCP(Month)'},
+    // UsageItem.labelKey 用（无 Label 后缀）：token5h / tokenWeekly / tokenMonthly / mcpMonthly
+    'token5h': {'zh': 'Token(5H)', 'en': 'Token(5H)'},
+    'tokenWeekly': {'zh': 'Token(周)', 'en': 'Token(Week)'},
+    'tokenMonthly': {'zh': 'Token(月)', 'en': 'Token(Month)'},
+    'mcpMonthly': {'zh': 'MCP(月)', 'en': 'MCP(Month)'},
+    // ☰ 菜单标题
+    'settings': {'zh': '设置', 'en': 'Settings'},
     // PinLabel
     'pinLabel': {'zh': '置顶', 'en': 'Pin'},
     // LanguageLabel

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:codingplan_refresh/models/usage_info.dart';
 import 'package:codingplan_refresh/services/log_service.dart';
-import 'package:codingplan_refresh/services/usage_parser.dart';
 import 'package:codingplan_refresh/utils/sse.dart';
 
 /// 类型化 LLM 异常：携带本地化键 [l10nKey] 与格式参数 [args]，供调用方映射成
@@ -35,9 +34,6 @@ String processSseLines(List<String> lines, void Function(String) onChunk) {
 class LlmService {
   final LogService log;
   LlmService(this.log);
-
-  static const _usageUrl =
-      'https://open.bigmodel.cn/api/monitor/usage/quota/limit';
 
   /// OpenAI 兼容流式调用。失败抛 [LlmException]（携带 l10nKey 供调用方本地化；
   /// 调用方处理重试与 LastAutoTriggerKey）。
@@ -118,29 +114,10 @@ class LlmService {
     }
   }
 
-  /// 查询 BigModel 配额。失败返回 null（静默）。
-  Future<UsageInfo?> queryBigmodelUsage(String apiKey) async {
-    if (apiKey.trim().isEmpty) return null;
-    try {
-      final reqLog = StringBuffer()
-        ..writeln('========== [Usage Request] ==========')
-        ..writeln('GET $_usageUrl')
-        ..writeln('Authorization: ***');
-      log.append(reqLog.toString());
-
-      final response = await http.get(Uri.parse(_usageUrl), headers: {
-        'Authorization': apiKey,
-      }).timeout(const Duration(seconds: 120));
-
-      final body = response.body;
-      log.append('========== [Usage Response] ${response.statusCode} ==========');
-      log.append(_prettyJson(body));
-
-      if (response.statusCode < 200 || response.statusCode >= 300) return null;
-      return parseBigmodelUsage(body);
-    } catch (_) {
-      return null;
-    }
+  /// 查询 BigModel 配额。T1 桩化：返回 null（旧的 `UsageInfo` 已移除，统一为
+  /// `UsageResult`；T2 将替换为多 provider 用量查询逻辑，并删除本方法）。
+  Future<UsageResult?> queryBigmodelUsage(String apiKey) async {
+    return null;
   }
 
   String _prettyJson(String raw) {

@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
-import '../../models/usage_info.dart';
 
-/// 单行用量显示：标签 + 重置时间（居中）+ 百分比（右对齐着色）。
+/// 单行用量显示桩：旧 `LimitInfo` 类型已移除（统一为 `UsageItem`/`UsageResult`）。
 ///
-/// 平移旧 MAUI `MainPage.xaml` 中三行 Token(5H) / Token(周) / MCP(月) 的渲染逻辑，
-/// 百分比着色阈值与 MAUI `PctColor` 一致：`>=80` 红 / `>=50` 橙 / 其余蓝。
+/// T1 桩化：直接以 `percentage` / `resetMs` 作为可选入参（旧行为最小映射），
+/// 保留类结构供 T6/T9 重写或删除。着色阈值与旧版一致：`>=80` 红 / `>=50` 橙 / 其余蓝。
 class UsageRow extends StatelessWidget {
   final String label;
-  final LimitInfo? info;
+  final int? percentage;
+  final int? resetMs;
   /// 将重置时刻（Unix 毫秒）转为「重置 HH:mm」/「重置 MM/dd HH:mm」文本。
-  /// 由 [MainPage] 注入，避免本组件直接依赖本地化与时间格式化。
+  /// 由调用方注入，避免本组件直接依赖本地化与时间格式化。
   final String Function(int ms) resetText;
   const UsageRow({
     super.key,
     required this.label,
-    required this.info,
+    this.percentage,
+    this.resetMs,
     required this.resetText,
   });
 
@@ -27,7 +28,7 @@ class UsageRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pct = info?.percentage;
+    final pct = percentage;
     return Row(children: [
       SizedBox(
           width: 80,
@@ -35,9 +36,7 @@ class UsageRow extends StatelessWidget {
               style: const TextStyle(color: Color(0xFF888888), fontSize: 12))),
       Expanded(
           child: Center(
-              // info 可空且 null 分支可达：三行（hour5/weekly/mcp）在 MainPage 中
-              // 均无条件渲染，启动时 _usage 为 null，故 info 可能为 null。
-              child: Text(info == null ? '' : resetText(info!.nextResetTimeMs ?? -1),
+              child: Text(resetMs == null ? '' : resetText(resetMs!),
                   style: const TextStyle(color: Color(0xFF999999), fontSize: 11)))),
       SizedBox(
           width: 50,

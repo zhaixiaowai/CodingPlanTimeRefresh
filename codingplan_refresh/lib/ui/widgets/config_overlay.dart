@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import '../../models/app_config.dart';
 import '../../services/localization_service.dart';
 
-/// 配置浮层：API URL / Key / Model / 语言三选（自动·中文·English）。
+/// 配置浮层桩：旧单组字段（apiUrl/apiKey/model/isCollapsed）已移除，
+/// 多组配置 UI 由 T5 的 ConfigPanel 取代。
 ///
-/// 平移旧 MAUI `MainPage.xaml` 中 ConfigSection 浮层。
-/// `onSave(next, langChanged)`：`langChanged` 为新语言代码相对旧值是否变更。
+/// T1 桩化：仅保留类结构与构造签名，读写首个 provider 作为占位，
+/// 让全项目编译通过；真正的多组编辑逻辑在 T5 重写。
 class ConfigOverlay extends StatefulWidget {
   final AppConfig initial;
   final LocalizationService l10n;
@@ -30,9 +31,12 @@ class _ConfigOverlayState extends State<ConfigOverlay> {
   @override
   void initState() {
     super.initState();
-    url = TextEditingController(text: widget.initial.apiUrl);
-    key = TextEditingController(text: widget.initial.apiKey);
-    model = TextEditingController(text: widget.initial.model);
+    final p = widget.initial.providers.isEmpty
+        ? null
+        : widget.initial.providers.first;
+    url = TextEditingController(text: p?.apiUrl ?? '');
+    key = TextEditingController(text: p?.apiKey ?? '');
+    model = TextEditingController(text: p?.model ?? 'glm-5.1');
     langIndex = (widget.initial.language ?? 'auto') == 'zh'
         ? 1
         : (widget.initial.language == 'en' ? 2 : 0);
@@ -49,6 +53,33 @@ class _ConfigOverlayState extends State<ConfigOverlay> {
   @override
   Widget build(BuildContext context) {
     final l = widget.l10n;
+    // 桩：保存时把首个 provider 替换为新输入（保留其余 provider 与 id）。
+    void onSave() {
+      final next = AppConfig(
+        providers: List<ProviderConfig>.from(widget.initial.providers),
+        isAlwaysOnTop: widget.initial.isAlwaysOnTop,
+        language:
+            langIndex == 1 ? 'zh' : (langIndex == 2 ? 'en' : 'auto'),
+        lastTriggerKeys: Map<String, String>.from(widget.initial.lastTriggerKeys),
+      );
+      if (next.providers.isNotEmpty) {
+        final p = next.providers.first;
+        next.providers[0] = p.copyWith(
+          apiUrl: url.text,
+          apiKey: key.text,
+          model: model.text,
+        );
+      } else {
+        next.providers.add(ProviderConfig(
+          id: 'legacy',
+          apiUrl: url.text,
+          apiKey: key.text,
+          model: model.text,
+        ));
+      }
+      widget.onSave(next, next.language != (widget.initial.language ?? 'auto'));
+    }
+
     return Container(
       color: const Color(0xE62D2D30),
       padding: const EdgeInsets.all(12),
@@ -69,24 +100,7 @@ class _ConfigOverlayState extends State<ConfigOverlay> {
         Row(children: [
           Expanded(
               child: ElevatedButton(
-                  onPressed: () {
-                    final next = AppConfig(
-                      isAlwaysOnTop: widget.initial.isAlwaysOnTop,
-                      apiUrl: url.text,
-                      apiKey: key.text,
-                      model: model.text,
-                      lastAutoTriggerKey: widget.initial.lastAutoTriggerKey,
-                      isCollapsed: widget.initial.isCollapsed,
-                      language: langIndex == 1
-                          ? 'zh'
-                          : (langIndex == 2 ? 'en' : 'auto'),
-                    );
-                    widget.onSave(
-                        next,
-                        next.language !=
-                            (widget.initial.language ?? 'auto'));
-                  },
-                  child: Text(l.t('save')))),
+                  onPressed: onSave, child: Text(l.t('save')))),
           const SizedBox(width: 8),
           Expanded(
               child: ElevatedButton(

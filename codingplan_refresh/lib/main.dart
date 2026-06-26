@@ -34,7 +34,8 @@ Future<void> main() async {
   final window = WindowController();
   await window.setup(
     width: ConfigService.expandedWidth,
-    height: config.isCollapsed ? ConfigService.collapsedHeight : ConfigService.expandedHeight,
+    // isCollapsed 字段已移除（多组改造）；启动默认展开态，T6 由窗口状态机决定高度。
+    height: ConfigService.expandedHeight,
     alwaysOnTop: config.isAlwaysOnTop,
     maxExpandedHeight: ConfigService.expandedHeight,
   );
