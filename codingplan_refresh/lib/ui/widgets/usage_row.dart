@@ -35,8 +35,8 @@ class UsageRow extends StatelessWidget {
               style: const TextStyle(color: Color(0xFF888888), fontSize: 12))),
       Expanded(
           child: Center(
-              // info 可空且 null 分支可达：MCP 行（usage_info.mcp 为 LimitInfo?）在
-              // MainPage 中无条件渲染（_usage?.mcp），而 hour5/weekly 才条件渲染。
+              // info 可空且 null 分支可达：三行（hour5/weekly/mcp）在 MainPage 中
+              // 均无条件渲染，启动时 _usage 为 null，故 info 可能为 null。
               child: Text(info == null ? '' : resetText(info!.nextResetTimeMs ?? -1),
                   style: const TextStyle(color: Color(0xFF999999), fontSize: 11)))),
       SizedBox(

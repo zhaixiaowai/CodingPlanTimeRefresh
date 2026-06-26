@@ -19,6 +19,7 @@ class FakeWindowController extends WindowController {
     required double width,
     required double height,
     required bool alwaysOnTop,
+    required double maxExpandedHeight,
   }) async {}
   @override
   Future<void> setHeight(double width, double h) async => heights.add(h);

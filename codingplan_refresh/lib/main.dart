@@ -36,6 +36,7 @@ Future<void> main() async {
     width: ConfigService.expandedWidth,
     height: config.isCollapsed ? ConfigService.collapsedHeight : ConfigService.expandedHeight,
     alwaysOnTop: config.isAlwaysOnTop,
+    maxExpandedHeight: ConfigService.expandedHeight,
   );
 
   runApp(_App(config: config, configService: configService, llm: llm, log: log, l10n: l10n, window: window));
@@ -51,9 +52,9 @@ Future<Directory> _resolveDataDir() async {
     if (!dir.existsSync()) dir.createSync(recursive: true);
     return dir;
   }
-  // macOS：先尝试旧 MacCatalyst 的常见落盘位置，再回退到 path_provider 默认。
-  // 实现者：在 Mac 上实测旧 config.dat 真实路径（见 spec §5.4），
-  // 在此按「先查旧路径，再回退默认」的顺序返回。
+  // macOS：旧 MacCatalyst 的配置路径与 Flutter 原生 path_provider 的
+  // getApplicationSupportDirectory 可能不同，当前直接回退默认目录。
+  // 如需迁移旧配置，需在 Mac 上实测旧 config.dat 位置后补探测逻辑。
   final support = await getApplicationSupportDirectory();
   return support;
 }

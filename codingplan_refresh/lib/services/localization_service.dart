@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:intl/intl.dart';
 
 /// 本地化服务。
 ///
@@ -6,9 +7,9 @@ import 'dart:io';
 /// - 中文（zh）：CodingPlanTimeRefresh/Resources/Strings/AppResources.resx
 /// - 英文（en）：CodingPlanTimeRefresh/Resources/Strings/AppResources.en.resx
 ///
-/// 旧 resx 使用 .NET 复合格式占位符（`{0}`、`{0:HH:mm}` 等），
-/// 此处保留原样；占位符替换由 [FmtString.fmt] 按出现顺序填入已格式化好的字符串，
-/// 与 MAUI 端 `string.Format` 行为一致（时间等格式由调用方预先格式化）。
+/// 旧 resx 使用 .NET 复合格式占位符（`{0}`、`{0:HH:mm}` 等），此处保留原样；
+/// 占位符替换由 [FmtString.fmt] 真解析（带格式的 `DateTime` 参数用 `DateFormat` 渲染），
+/// 与 MAUI 端 `string.Format` 行为一致。
 class LocalizationService {
   /// 当前语言代码：`'zh'` 或 `'en'`。
   String current = 'zh';
@@ -116,17 +117,25 @@ class LocalizationService {
 /// 占位符替换扩展。
 ///
 /// 旧 resx 使用 .NET 复合格式：`{0}`、`{1}`、`{0:HH:mm}`、`{0:MM/dd HH:mm}` 等。
-/// 本服务只做纯字符串替换——保留 `.NET` 占位符（连 `:format` 后缀也原样保留），
-/// 按 **出现顺序** 逐个替换首个 `{N}` / `{N:format}` 占位。时间等格式说明符
-/// （`:HH:mm` 等）由 `fmt` 整体吞下、忽略语义；调用方需把时间值预先用 `DateFormat`
-/// /`toString` 格式化成最终字符串再传入 `args`。
+/// `fmt` 真解析该格式：按 **出现顺序** 逐个替换首个 `{N}` / `{N:format}` 占位——
+/// 若占位带格式说明符（`:HH:mm` 等）且对应参数为 `DateTime`，则用 `intl` 的
+/// `DateFormat` 按该格式渲染；参数为 `String`/`num` 等时忽略格式直接替换。
 /// `args` 的顺序必须与 resx 占位符 `{0}`、`{1}`、`{2}` ... 的出现顺序一致。
 extension FmtString on String {
+  /// 按 args 出现顺序逐个替换首个 `{N}` / `{N:format}` 占位。
+  /// 带格式说明符且参数为 DateTime 时，用 intl 的 DateFormat 渲染。
   String fmt(List<Object> args) {
     var s = this;
-    final re = RegExp(r'\{\d+(?::[^}]*)?\}');
+    final re = RegExp(r'\{(\d+)(?::([^}]*))?\}');
     for (final a in args) {
-      s = s.replaceFirst(re, '$a');
+      s = s.replaceFirstMapped(re, (match) {
+        final format = match.group(2);
+        final arg = a;
+        if (format != null && format.isNotEmpty && arg is DateTime) {
+          return DateFormat(format).format(arg);
+        }
+        return '$arg';
+      });
     }
     return s;
   }

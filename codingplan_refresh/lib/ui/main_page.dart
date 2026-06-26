@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/app_config.dart';
 import '../models/usage_info.dart';
 import '../services/config_service.dart';
@@ -21,11 +20,11 @@ import 'widgets/result_overlay.dart';
 /// - 折叠/展开（联动窗口高度 + 持久化 `IsCollapsed`）、置顶、配置浮层、结果浮层。
 /// - 流式输出节流：累积到 `StringBuffer`，每 50ms 最多 setState 一次。
 ///
-/// 关于本地化占位符：`LocalizationService.fmt` 用正则按出现顺序整体替换
-/// `{0}` / `{0:format}`，格式说明符（`:HH:mm` 等）语义被忽略。因此凡用到带格式
-/// 占位的字符串（`nextTriggerFormat` / `resetToday` / `resetOther` / `resultTimestamp`），
-/// 时间值必须**预先用 `DateFormat` 格式化成最终字符串**再传 `fmt`——绝不能传裸
-/// `DateTime` 或 `DateTime.toString()`。
+/// 关于本地化占位符：`LocalizationService.fmt` 真解析 .NET 复合格式
+/// （`{0}` / `{0:format}`）。带格式说明符的占位（`:HH:mm` 等）若对应参数为
+/// `DateTime`，则用 `intl` 的 `DateFormat` 按该格式渲染；参数为 `String`/`num`
+/// 等时忽略格式直接替换。因此调用方可直接传 `DateTime`（如 `resultTimestamp`
+/// 的 `{0:HH:mm:ss}`），无需预先格式化。`args` 顺序须与占位符出现顺序一致。
 class MainPage extends StatefulWidget {
   final AppConfig config;
   final ConfigService configService;
@@ -131,11 +130,10 @@ class _MainPageState extends State<MainPage> {
       );
       flush(); // 流结束后确保完整文本落盘
       // 平移旧 MAUI：成功后表头改为「返回结果(最后调用于 HH:mm:ss)」。
-      // resultTimestamp 占位 `{0:HH:mm:ss}` 语义被 fmt 忽略，须预先格式化时间值。
+      // resultTimestamp 占位 `{0:HH:mm:ss}` 由 fmt 真解析，直接传 DateTime。
       if (mounted) {
-        setState(() => _resultHeader = widget.l10n
-            .t('resultTimestamp')
-            .fmt([DateFormat('HH:mm:ss').format(DateTime.now())]));
+        setState(() => _resultHeader =
+            widget.l10n.t('resultTimestamp').fmt([DateTime.now()]));
       }
       return true;
     } catch (e) {
@@ -148,7 +146,7 @@ class _MainPageState extends State<MainPage> {
       final displayText = e is LlmException
           ? widget.l10n.t(e.l10nKey).fmt(e.args)
           : widget.l10n.t('errorMessage').fmt(['$e']);
-      setState(() => _resultText = displayText);
+      if (mounted) setState(() => _resultText = displayText);
       widget.log.append('[Error] $e');
       return false;
     } finally {
@@ -182,6 +180,9 @@ class _MainPageState extends State<MainPage> {
   }
 
   /// 60s 定时器：轮询 BigModel 用量配额并更新标题/三行用量。
+  ///
+  /// 用量更新后若处于折叠态，按 weekly 数据有无重算窗口高度（平移旧 MAUI
+  /// `UpdateLimitRow` 中 `if (_collapsed) ResizeCollapsed()` 的联动）。
   Future<void> _queryUsage() async {
     if (_config.apiUrl.isEmpty || _config.apiKey.isEmpty) return;
     if (!_config.apiUrl.contains('bigmodel.cn')) return;
@@ -193,27 +194,29 @@ class _MainPageState extends State<MainPage> {
         : ' ${u.level![0].toUpperCase()}${u.level!.substring(1)}';
     await widget.window
         .setTitle(widget.l10n.t('windowTitle').fmt([primary, level.trim()]));
-    setState(() => _usage = u);
+    if (mounted) {
+      setState(() => _usage = u);
+      // weekly 显隐变化（null↔非 null）时折叠态高度 120↔142 联动。
+      if (_collapsed) _applyCollapsedHeight();
+    }
   }
 
   /// 刷新「下次触发」标签。
   ///
-  /// nextTriggerFormat 占位 `{0:HH:mm}` 语义被 fmt 忽略，须预先把 next 用
-  /// `DateFormat('HH:mm')` 格式化成字符串——绝不能传 `'$next'`（会得到
-  /// `2026-06-26 01:00:00.000` 这样的 ISO 串）。
+  /// nextTriggerFormat 占位 `{0:HH:mm}` 由 fmt 真解析，直接传 DateTime（next）；
+  /// 后两个占位 `{1}`/`{2}` 为分/秒（int，无格式）。
   void _updateNextTrigger() {
     final next = SchedulerService.nextTrigger(DateTime.now(), _config.lastAutoTriggerKey);
     if (next == null) return;
     final diff = next.difference(DateTime.now());
     final m = diff.inMinutes;
     final s = diff.inSeconds % 60;
-    setState(() => _nextTriggerText = widget.l10n
-        .t('nextTriggerFormat')
-        .fmt([DateFormat('HH:mm').format(next), m, s]));
+    setState(() => _nextTriggerText =
+        widget.l10n.t('nextTriggerFormat').fmt([next, m, s]));
   }
 
   /// 重置时刻（Unix 毫秒）→ 「重置 HH:mm」（今天）或「重置 MM/dd HH:mm」（其他天）。
-  /// 占位 `{0:HH:mm}` / `{0:MM/dd HH:mm}` 语义被 fmt 忽略，须预先格式化 dt。
+  /// 占位 `{0:HH:mm}` / `{0:MM/dd HH:mm}` 由 fmt 真解析，直接传 DateTime。
   String _resetText(int? ms) {
     if (ms == null || ms < 0) return '';
     final dt = DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
@@ -221,23 +224,30 @@ class _MainPageState extends State<MainPage> {
     final isToday = dt.year == now.year &&
         dt.month == now.month &&
         dt.day == now.day;
-    final formatted = isToday
-        ? DateFormat('HH:mm').format(dt)
-        : DateFormat('MM/dd HH:mm').format(dt);
-    return widget.l10n.t(isToday ? 'resetToday' : 'resetOther').fmt([formatted]);
+    return widget.l10n.t(isToday ? 'resetToday' : 'resetOther').fmt([dt]);
   }
 
-  /// 折叠/展开：联动窗口高度（从 ConfigService 取常量）+ 持久化 IsCollapsed。
+  /// 折叠态根据 weekly 是否存在重算窗口高度（平移旧 MAUI `ResizeCollapsed` +
+  /// `UpdateLimitRow` 的 `if (_collapsed) ResizeCollapsed`）。展开态不适用。
+  void _applyCollapsedHeight() {
+    if (!_collapsed) return;
+    final h = _usage?.weekly != null
+        ? ConfigService.collapsedHeightWithWeekly
+        : ConfigService.collapsedHeight;
+    widget.window.setHeight(ConfigService.expandedWidth, h);
+  }
+
+  /// 折叠/展开：联动窗口高度（折叠走 _applyCollapsedHeight，展开用 expandedHeight）
+  /// + 持久化 IsCollapsed。
   void _toggleCollapse() {
     setState(() => _collapsed = !_collapsed);
     _config.isCollapsed = _collapsed;
     widget.configService.save(_config);
-    final h = _collapsed
-        ? (_usage?.weekly != null
-            ? ConfigService.collapsedHeightWithWeekly
-            : ConfigService.collapsedHeight)
-        : ConfigService.expandedHeight;
-    widget.window.setHeight(ConfigService.expandedWidth, h);
+    if (_collapsed) {
+      _applyCollapsedHeight();
+    } else {
+      widget.window.setHeight(ConfigService.expandedWidth, ConfigService.expandedHeight);
+    }
   }
 
   /// 翻转置顶状态（平移旧 MAUI：点 pinLabel 文字 ↔ checkbox 同一逻辑）。
@@ -256,25 +266,34 @@ class _MainPageState extends State<MainPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF2D2D30),
       body: Stack(children: [
-        // 主内容：下次触发 + 三行用量
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 16, 10, 4),
-          child: Column(children: [
-            Align(
-                alignment: Alignment.centerRight,
-                child: Text(_nextTriggerText,
-                    style: const TextStyle(
-                        color: Color(0xFF666666), fontSize: 10))),
-            const Divider(color: Color(0xFF444444), height: 6),
-            if (_usage?.hour5 != null)
-              UsageRow(label: l.t('token5hLabel'), info: _usage?.hour5, resetText: _resetText),
-            if (_usage?.weekly != null)
-              UsageRow(label: l.t('tokenWeekLabel'), info: _usage?.weekly, resetText: _resetText),
-            UsageRow(label: l.t('mcpMonthLabel'), info: _usage?.mcp, resetText: _resetText),
-            const Spacer(),
-            // 底部栏：手动触发 + 置顶 + 设置（折叠态隐藏）
-            if (!_collapsed)
-              Row(children: [
+        // 主内容：下次触发 + 三行用量（ScrollView 内可滚，平移旧 MAUI <ScrollView>）。
+        // 折叠态窗口矮时内容可滚而非硬裁剪；bottom bar 固定在 ScrollView 外。
+        Column(children: [
+          Expanded(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
+                child: Column(children: [
+                  Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(_nextTriggerText,
+                          style: const TextStyle(
+                              color: Color(0xFF666666), fontSize: 10))),
+                  const Divider(color: Color(0xFF444444), height: 5),
+                  // 三行始终占位（平移旧 MAUI 三行 Grid 始终在 InfoSection，
+                  // 空 Label 占行高），info 为 null 时 UsageRow 内部已处理空显示。
+                  UsageRow(label: l.t('token5hLabel'), info: _usage?.hour5, resetText: _resetText),
+                  UsageRow(label: l.t('tokenWeekLabel'), info: _usage?.weekly, resetText: _resetText),
+                  UsageRow(label: l.t('mcpMonthLabel'), info: _usage?.mcp, resetText: _resetText),
+                ]),
+              ),
+            ),
+          ),
+          // 底部栏：手动触发 + 置顶 + 设置（折叠态隐藏；固定在 ScrollView 外）
+          if (!_collapsed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+              child: Row(children: [
                 ElevatedButton(
                     onPressed: _isBusy
                         ? null
@@ -298,8 +317,8 @@ class _MainPageState extends State<MainPage> {
                           color: Color(0xFFAAAAAA), size: 18)),
                 ]),
               ]),
-          ]),
-        ),
+            ),
+        ]),
         // 折叠三角（左上）
         Positioned(
             left: 4,
