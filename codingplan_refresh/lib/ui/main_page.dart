@@ -332,15 +332,18 @@ class _MainPageState extends State<MainPage> {
                   color: const Color(0xFF888888)),
             )),
         if (_showResult)
-          ResultOverlay(
+          Positioned.fill(
+            child: ResultOverlay(
               header: _resultHeader,
               text: _resultText,
               placeholder: l.t('waitingPlaceholder'),
               onClose: () => setState(() => _showResult = false),
               onTrigger: () => _callLlmOnce(manual: true),
               l10n: l),
+          ),
         if (_showConfig)
-          ConfigOverlay(
+          Positioned.fill(
+            child: ConfigOverlay(
               initial: _config,
               l10n: l,
               onSave: (next, langChanged) {
@@ -360,7 +363,9 @@ class _MainPageState extends State<MainPage> {
                 }
                 if (urlChanged) _queryUsage();
               },
-              onCancel: () => setState(() => _showConfig = false)),
+              onCancel: () => setState(() => _showConfig = false),
+            ),
+          ),
       ]),
     );
   }
