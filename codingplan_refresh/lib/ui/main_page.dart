@@ -87,17 +87,19 @@ class _MainPageState extends State<MainPage> {
     if (!r.trigger) return;
     _config.lastAutoTriggerKey = r.key;
     widget.configService.save(_config);
-    _callLlm(manual: false, retry: 3);
+    _callLlmWithRetry();
   }
 
-  /// 流式调用 LLM。
+  /// 单次流式调用 LLM。
   ///
-  /// - [manual]：是否手动触发（手动触发失败不重试、不清空 `lastAutoTriggerKey`）。
-  /// - [retry]：自动触发失败时的剩余重试次数（每次间隔 5s，共 3 次）。
+  /// - [manual]：是否手动触发（手动触发失败不清空 `lastAutoTriggerKey`）。
+  /// 返回是否成功（true=成功）。每次调用结束（finally）复位 `_isBusy`，
+  /// 使重试循环下次进入时 `_isBusy=false` 能正常执行——平移旧 MAUI
+  /// `CallLLMAsync` 的「单次尝试 + finally 复位 + 调用方循环重试」结构。
   /// 流式输出节流：`onChunk` 累积到 `buf` + `flushTimer` 50ms flush，
   /// 避免逐 chunk 高频 setState 卡顿；流结束后 `flush()` 确保完整文本落盘。
-  Future<void> _callLlm({required bool manual, int retry = 1}) async {
-    if (_isBusy) return;
+  Future<bool> _callLlmOnce({required bool manual}) async {
+    if (_isBusy) return false;
     setState(() {
       _isBusy = true;
       _resultText = widget.l10n.t('loading');
@@ -132,19 +134,34 @@ class _MainPageState extends State<MainPage> {
             .t('resultTimestamp')
             .fmt([DateFormat('HH:mm:ss').format(DateTime.now())]));
       }
+      return true;
     } catch (e) {
       if (!manual) {
         _config.lastAutoTriggerKey = '';
         widget.configService.save(_config);
       }
-      setState(() => _resultText = widget.l10n.t('errorMessage').fmt(['$e']));
+      // LlmException 走 l10n 键映射（与旧 MAUI 抛 AppResources.XXX 一致）；
+      // 其它异常（超时/网络等）兜底用 errorMessage。
+      final displayText = e is LlmException
+          ? widget.l10n.t(e.l10nKey).fmt(e.args)
+          : widget.l10n.t('errorMessage').fmt(['$e']);
+      setState(() => _resultText = displayText);
       widget.log.append('[Error] $e');
-      if (!manual && retry > 1) {
-        await Future.delayed(const Duration(seconds: 5));
-        await _callLlm(manual: false, retry: retry - 1);
-      }
+      return false;
     } finally {
       if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  /// 自动触发的重试循环（平移旧 MAUI `OnTimerTick` 的 `for attempt 1..3`）。
+  ///
+  /// 最多尝试 3 次，每次间隔 5s；某次成功即跳出。`_callLlmOnce` 每次 finally
+  /// 复位 `_isBusy`，故下次循环进入时 `_isBusy=false` 能正常执行（修复了旧实现
+  /// 递归重试时 `_isBusy` 仍为 true、导致重试永不执行的死代码）。
+  Future<void> _callLlmWithRetry() async {
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      if (await _callLlmOnce(manual: false)) break;
+      if (attempt < 3) await Future.delayed(const Duration(seconds: 5));
     }
   }
 
@@ -207,6 +224,16 @@ class _MainPageState extends State<MainPage> {
     widget.window.setHeight(ConfigService.expandedWidth, h);
   }
 
+  /// 翻转置顶状态（平移旧 MAUI：点 pinLabel 文字 ↔ checkbox 同一逻辑）。
+  /// 旧 MAUI `OnTopMostLabelTapped` 仅翻转 checkbox，由 `CheckedChanged` 触发
+  /// 实际逻辑；Flutter 此处直接翻转并落盘，checkbox `onChanged` 与 label
+  /// `onTap` 共用本方法。
+  void _toggleAlwaysOnTop() {
+    setState(() => _config.isAlwaysOnTop = !_config.isAlwaysOnTop);
+    widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
+    widget.configService.save(_config);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = widget.l10n;
@@ -243,13 +270,12 @@ class _MainPageState extends State<MainPage> {
                 Row(children: [
                   Checkbox(
                       value: _config.isAlwaysOnTop,
-                      onChanged: (v) {
-                        setState(() => _config.isAlwaysOnTop = v ?? false);
-                        widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
-                        widget.configService.save(_config);
-                      }),
-                  Text(l.t('pinLabel'),
-                      style: const TextStyle(color: Colors.white, fontSize: 12)),
+                      onChanged: (_) => _toggleAlwaysOnTop()),
+                  GestureDetector(
+                      onTap: _toggleAlwaysOnTop,
+                      child: Text(l.t('pinLabel'),
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 12))),
                   IconButton(
                       onPressed: () => setState(() => _showConfig = true),
                       icon: const Icon(Icons.settings,
@@ -276,7 +302,7 @@ class _MainPageState extends State<MainPage> {
               text: _resultText,
               placeholder: l.t('waitingPlaceholder'),
               onClose: () => setState(() => _showResult = false),
-              onTrigger: () => _callLlm(manual: true),
+              onTrigger: () => _callLlmOnce(manual: true),
               l10n: l),
         if (_showConfig)
           ConfigOverlay(
