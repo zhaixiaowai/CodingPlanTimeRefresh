@@ -1,121 +1,85 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:window_manager/window_manager.dart';
+import 'models/app_config.dart';
+import 'services/config_service.dart';
+import 'services/llm_service.dart';
+import 'services/localization_service.dart';
+import 'services/log_service.dart';
+import 'platform/window_controller.dart';
+import 'platform/single_instance.dart';
+import 'ui/main_page.dart';
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+
+  // 单实例（Windows 互斥体检测；已有实例则退出）
+  if (!SingleInstance().ensure()) {
+    exit(0);
+  }
+
+  // 数据目录：复用旧版路径，兼容读旧 config.dat。
+  // Windows: %APPDATA%/CodingPlanTimeRefresh；macOS: 需对齐旧 MacCatalyst 落盘路径。
+  final dataDir = await _resolveDataDir();
+  final configService = ConfigService(dataDir);
+  final log = LogService(dataDir);
+  final llm = LlmService(log);
+  final l10n = LocalizationService();
+
+  final config = configService.load();
+  l10n.initialize(config.language);
+
+  final window = WindowController();
+  await window.setup(
+    width: ConfigService.expandedWidth,
+    height: config.isCollapsed ? ConfigService.collapsedHeight : ConfigService.expandedHeight,
+    alwaysOnTop: config.isAlwaysOnTop,
+  );
+
+  runApp(_App(config: config, configService: configService, llm: llm, log: log, l10n: l10n, window: window));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+Future<Directory> _resolveDataDir() async {
+  // 旧版 Windows 用 %APPDATA%/CodingPlanTimeRefresh。
+  // path_provider 的 getApplicationSupportPath 在 Windows 上指向
+  // %APPDATA%\<publisher>\<app>，需显式拼到旧路径以保证兼容。
+  if (Platform.isWindows) {
+    final appData = Platform.environment['APPDATA'];
+    final dir = Directory('$appData${Platform.pathSeparator}CodingPlanTimeRefresh');
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    return dir;
+  }
+  // macOS：先尝试旧 MacCatalyst 的常见落盘位置，再回退到 path_provider 默认。
+  // 实现者：在 Mac 上实测旧 config.dat 真实路径（见 spec §5.4），
+  // 在此按「先查旧路径，再回退默认」的顺序返回。
+  final support = await getApplicationSupportDirectory();
+  return support;
+}
 
-  // This widget is the root of your application.
+class _App extends StatelessWidget {
+  final AppConfig config;
+  final ConfigService configService;
+  final LlmService llm;
+  final LogService log;
+  final LocalizationService l10n;
+  final WindowController window;
+  const _App({required this.config, required this.configService, required this.llm, required this.log, required this.l10n, required this.window});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      debugShowCheckedModeBanner: false,
+      title: 'Coding Plan Time Refresh',
+      theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: const Color(0xFF2D2D30)),
+      home: MainPage(
+        config: config,
+        configService: configService,
+        llm: llm,
+        log: log,
+        l10n: l10n,
+        window: window,
       ),
     );
   }
