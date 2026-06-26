@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:codingplan_refresh/models/usage_info.dart';
 import 'package:codingplan_refresh/services/log_service.dart';
 import 'package:codingplan_refresh/utils/sse.dart';
 
@@ -112,12 +111,6 @@ class LlmService {
     } finally {
       client.close();
     }
-  }
-
-  /// 查询 BigModel 配额。T1 桩化：返回 null（旧的 `UsageInfo` 已移除，统一为
-  /// `UsageResult`；T2 将替换为多 provider 用量查询逻辑，并删除本方法）。
-  Future<UsageResult?> queryBigmodelUsage(String apiKey) async {
-    return null;
   }
 
   String _prettyJson(String raw) {
