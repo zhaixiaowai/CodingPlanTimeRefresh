@@ -27,38 +27,57 @@ class ResultOverlay extends StatelessWidget {
     return Container(
       color: const Color(0xE62D2D30),
       padding: const EdgeInsets.all(12),
-      child: Column(children: [
-        Row(children: [
-          Expanded(
-              child: Text(header,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  header,
                   style: const TextStyle(
-                      color: Color(0xFFAAAAAA), fontSize: 11))),
-          GestureDetector(
-              onTap: onClose,
-              child: const Text('✕',
-                  style: TextStyle(color: Color(0xFFAAAAAA)))),
-        ]),
-        const SizedBox(height: 6),
-        Expanded(
+                    color: Color(0xFFAAAAAA),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: onClose,
+                child: const Text(
+                  '✕',
+                  style: TextStyle(color: Color(0xFFAAAAAA)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Expanded(
             child: Container(
-          color: const Color(0xFF1E1E1E),
-          padding: const EdgeInsets.all(6),
-          child: SingleChildScrollView(
-            child: Text(text.isEmpty ? placeholder : text,
-                style: TextStyle(
+              color: const Color(0xFF1E1E1E),
+              padding: const EdgeInsets.all(6),
+              child: SingleChildScrollView(
+                child: Text(
+                  text.isEmpty ? placeholder : text,
+                  style: TextStyle(
                     color: text.isEmpty
                         ? const Color(0xFF555555)
                         : const Color(0xFFCCCCCC),
-                    fontSize: 11)),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
           ),
-        )),
-        const SizedBox(height: 6),
-        ElevatedButton(
+          const SizedBox(height: 6),
+          ElevatedButton(
             onPressed: onTrigger,
             style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF007ACC)),
-            child: Text(l10n.t('manualTriggerPopup'))),
-      ]),
+              backgroundColor: const Color(0xFF007ACC),
+            ),
+            child: Text(l10n.t('manualTriggerPopup')),
+          ),
+        ],
+      ),
     );
   }
 }
