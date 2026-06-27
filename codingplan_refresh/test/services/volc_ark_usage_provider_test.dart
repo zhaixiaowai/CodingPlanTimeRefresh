@@ -3,9 +3,19 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:codingplan_refresh/services/volc_ark_usage_provider.dart';
 
-void main() {
-  test('成功解析 periods → token5h/weekly/monthly', () async {
-    const stdout = '''
+/// runner 按 args 返回不同 stdout（模拟 arkcli usage plan / plans get 两条命令）。
+String _runnerReturn(List<String> args) {
+  if (args.contains('plans')) {
+    // plans get
+    return '''
+{
+  "plans": [
+    {"key": "coding-plan", "name": "Coding Plan", "scope": "personal", "tier": "pro", "status": "Running"}
+  ]
+}''';
+  }
+  // usage plan
+  return '''
 {
   "viewer": {"user_name": "x"},
   "items": [{"product": "coding-plan", "edition": "personal", "subscribed": true,
@@ -15,17 +25,48 @@ void main() {
       {"label": "monthly", "percent": 40.1, "reset_at": 1784303999000}
     ], "updated_at": 1782464268}]
 }''';
-    final provider = VolcArkUsageProvider(runner: ({required List<String> args, required Duration timeout}) async => stdout);
+}
+
+void main() {
+  test('tier 来自 plans get 的 scope==edition(personal) → 火山方舟 Pro（覆盖 edition Personal）', () async {
+    final provider = VolcArkUsageProvider(
+        runner: ({required List<String> args, required Duration timeout}) async => _runnerReturn(args));
     final r = await provider.query();
     expect(r.errorMessage, isNull);
-    expect(r.vendorTitle, '火山方舟 Personal');
+    // usage plan edition=personal → plans get 找 scope=personal 的 plan，tier=pro
+    // 覆盖 edition 标题 → 「火山方舟 Pro」
+    expect(r.vendorTitle, '火山方舟 Pro');
     expect(r.items.map((i) => i.labelKey).toList(), ['token5h', 'tokenWeekly', 'tokenMonthly']);
     expect(r.items[0].percentage, closeTo(18.2, 0.01));
   });
 
+  test('plans get 无 scope==edition 的 plan → fallback 用 edition', () async {
+    final provider = VolcArkUsageProvider(runner: ({required List<String> args, required Duration timeout}) async {
+      if (args.contains('plans')) {
+        // 没有 scope=personal 的 plan（只有 team）
+        return '{"plans":[{"key":"other","scope":"team","tier":"enterprise"}]}';
+      }
+      return _runnerReturn(args);
+    });
+    final r = await provider.query();
+    expect(r.vendorTitle, '火山方舟 Personal'); // edition=personal 兜底
+  });
+
+  test('plans get 失败/格式不符 → fallback edition', () async {
+    final provider = VolcArkUsageProvider(runner: ({required List<String> args, required Duration timeout}) async {
+      if (args.contains('plans')) {
+        return 'not json';
+      }
+      return _runnerReturn(args);
+    });
+    final r = await provider.query();
+    expect(r.vendorTitle, '火山方舟 Personal');
+  });
+
   test('arkcli 返回 ok:false → 显示 error.message', () async {
     const stdout = '{"ok":false,"error":{"type":"error","message":"please run arkcli auth login"}}';
-    final provider = VolcArkUsageProvider(runner: ({required List<String> args, required Duration timeout}) async => stdout);
+    final provider = VolcArkUsageProvider(
+        runner: ({required List<String> args, required Duration timeout}) async => stdout);
     final r = await provider.query();
     expect(r.items, isEmpty);
     expect(r.errorMessage, 'please run arkcli auth login');

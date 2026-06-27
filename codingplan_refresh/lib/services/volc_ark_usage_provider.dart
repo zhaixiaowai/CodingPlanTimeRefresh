@@ -47,40 +47,84 @@ class VolcArkUsageProvider implements UsageProvider {
 
   @override
   Future<UsageResult> query() async {
+    // 1) 用量百分比：arkcli usage plan
+    final usageStdout = await _runSafe(['usage', 'plan']);
+    if (usageStdout.isError) {
+      return UsageResult('火山方舟', [], usageStdout.error!);
+    }
+    final parsed = _parseUsage(usageStdout.value!);
+
+    // 2) 等级（Pro/Team…）：arkcli plans get → 找 scope==edition（usage plan 的
+    //    edition）那条的 tier。失败/格式不符 → fallback 用 edition 拼标题。
+    final tier = await _fetchTierForScope(parsed.edition);
+    final title = tier != null
+        ? '火山方舟 ${tier[0].toUpperCase()}${tier.substring(1)}'
+        : parsed.title;
+    return UsageResult(title, parsed.items, parsed.errorMessage);
+  }
+
+  /// 调用 arkcli 子命令，统一处理异常 → (error 不为 null 即失败)。
+  Future<_RunResult> _runSafe(List<String> args) async {
     try {
-      final stdout = await runner(args: ['usage', 'plan'], timeout: const Duration(seconds: 10));
-      return _parse(stdout);
+      final stdout =
+          await runner(args: args, timeout: const Duration(seconds: 10));
+      return _RunResult(stdout);
     } on ProcessException catch (e) {
       final msg = e.message;
-      // arkcli 未安装（命令找不到）
       if (msg.contains('命令找不到') ||
           msg.contains('命令不存在') ||
           msg.contains('not found') ||
           msg.contains('系统找不到') ||
           e.toString().contains('No such file') ||
           e.errorCode == 2) {
-        return const UsageResult('火山方舟', [], 'arkcli 未安装，参考 README');
+        return _RunResult.withError('arkcli 未安装，参考 README');
       }
-      // 进程失败但 arkcli 存在（如未登录）→ 直接回显 message
-      return UsageResult('火山方舟', [], msg.isEmpty ? '查询失败，未找到数据' : msg);
+      return _RunResult.withError(msg.isEmpty ? '查询失败，未找到数据' : msg);
     } on TimeoutException {
-      return const UsageResult('火山方舟', [], '查询超时');
+      return _RunResult.withError('查询超时');
     } catch (_) {
-      return const UsageResult('火山方舟', [], '查询失败，未找到数据');
+      return _RunResult.withError('查询失败，未找到数据');
     }
   }
 
-  UsageResult _parse(String stdout) {
+  /// 查 arkcli plans get，返回 scope==[scope] 那条的 tier；未找到/格式不符返回 null。
+  /// [scope] 来自 usage plan 的 edition（如 personal/team/enterprise），不硬编码。
+  Future<String?> _fetchTierForScope(String? scope) async {
+    if (scope == null || scope.isEmpty) return null;
+    final res = await _runSafe(['plans', 'get']);
+    if (res.isError) return null;
+    try {
+      final doc = jsonDecode(res.value!) as Map<String, dynamic>;
+      if (doc['ok'] == false) return null;
+      final plans = doc['plans'];
+      if (plans is! List) return null;
+      for (final p in plans) {
+        if (p is! Map<String, dynamic>) continue;
+        if (p['scope'] == scope) {
+          final tier = p['tier'];
+          if (tier is String && tier.isNotEmpty) return tier;
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 解析 usage plan stdout → (title, items, errorMessage)。title 用 edition 兜底
+  /// （调用方 query 会用 plans get 的 tier 覆盖）。
+  _ParsedUsage _parseUsage(String stdout) {
     try {
       final doc = jsonDecode(stdout) as Map<String, dynamic>;
-      // ok:false → error.message
       if (doc['ok'] == false) {
         final err = doc['error'];
         final msg = err is Map ? (err['message'] as String? ?? '查询失败，未找到数据') : '查询失败，未找到数据';
-        return UsageResult('火山方舟', [], msg);
+        return _ParsedUsage('火山方舟', '', const [], msg);
       }
       final items = doc['items'] as List;
-      if (items.isEmpty) return const UsageResult('火山方舟', [], '查询失败，未找到数据');
+      if (items.isEmpty) {
+        return const _ParsedUsage('火山方舟', '', [], '查询失败，未找到数据');
+      }
       final first = items[0] as Map<String, dynamic>;
       final edition = first['edition'] as String? ?? '';
       final title = edition.isEmpty
@@ -102,10 +146,30 @@ class VolcArkUsageProvider implements UsageProvider {
         if (key == null) continue;
         usageItems.add(UsageItem(key, percent.toDouble(), resetAt is int ? resetAt : null));
       }
-      if (usageItems.isEmpty) return UsageResult(title, [], '查询失败，未找到数据');
-      return UsageResult(title, usageItems, null);
+      if (usageItems.isEmpty) {
+        return _ParsedUsage(title, edition, const [], '查询失败，未找到数据');
+      }
+      return _ParsedUsage(title, edition, usageItems, null);
     } catch (_) {
-      return const UsageResult('火山方舟', [], '查询失败，未找到数据');
+      return const _ParsedUsage('火山方舟', '', [], '查询失败，未找到数据');
     }
   }
+}
+
+/// 一次 arkcli 子命令调用的结果（value 或 error 二选一）。
+class _RunResult {
+  final String? value;
+  final String? error;
+  _RunResult(this.value) : error = null;
+  _RunResult.withError(this.error) : value = null;
+  bool get isError => error != null;
+}
+
+/// usage plan 的解析中间结果（tier 由 query 另查 plans get 覆盖 title）。
+class _ParsedUsage {
+  final String title;
+  final String edition; // usage plan 的 edition，用作 plans get 的 scope 匹配键
+  final List<UsageItem> items;
+  final String? errorMessage;
+  const _ParsedUsage(this.title, this.edition, this.items, this.errorMessage);
 }
