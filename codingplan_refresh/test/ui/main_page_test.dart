@@ -35,7 +35,6 @@ class FakeWindowController extends WindowController {
     required double width,
     required double height,
     required bool alwaysOnTop,
-    required double maxExpandedHeight,
   }) async {}
 
   @override

@@ -158,10 +158,15 @@ class _MainPageState extends State<MainPage> {
   /// _globalTriggerKey 说明，避免 A 成功 B 失败时 A 被重复打）。返回是否成功。
   Future<bool> _callLlmOnce(String providerId, {required bool manual}) async {
     if (providerId.isEmpty) return false;
+    // firstWhere 用空对象 orElse：provider 已删（不在列表）时返回 id='' 占位，由
+    // p.id.isEmpty 判定 return false——不抛 StateError（空列表 .first 抛）、不用错
+    // provider（原 orElse 回退到 first 会拿错配置调 LLM）调 LLM。
     final p = _config.providers.firstWhere(
       (e) => e.id == providerId,
-      orElse: () => _config.providers.first,
+      orElse: () => ProviderConfig(
+          id: '', name: '', apiUrl: '', apiKey: '', model: ''),
     );
+    if (p.id.isEmpty) return false;
     final rs = _results[providerId];
     if (rs == null) return false;
     if (rs.isBusy) return false;
@@ -230,22 +235,32 @@ class _MainPageState extends State<MainPage> {
   // ===== 放大态（T8）=====
 
   /// 打开放大态：切到 [mode]（'config' / 'trigger'）并放大窗口到 420×520。
+  ///
+  /// 先 await enlarge（窗口先放大），再 setState 切放大态布局——避免放大态布局在
+  /// 旧 mini 尺寸窗口渲染一帧被裁剪。enlarge 内会先平移到屏内再 setSize。
   Future<void> _openEnlarged(String mode) async {
+    await widget.window.enlarge(w: 420, h: 520);
+    if (!mounted) return;
     setState(() {
       _enlarged = true;
       _enlargedMode = mode;
     });
-    await widget.window.enlarge(w: 420, h: 520);
   }
 
   /// 关闭放大态：缩回 mini（保留当前位置），由放大区面板的保存/取消/关闭触发。
+  ///
+  /// 先 setState 切回 mini 布局（比放大态被裁好），再用旧高 shrinkToContent 缩回，
+  /// 最后排 PostFrame 重测到新内容高（修注释承诺的"修正"——配置增删 provider 后
+  /// 缩回会立即重测）。_resizeToContent 内 `if (_enlarged) return` 不影响（此处已置 false）。
   Future<void> _closeEnlarged() async {
     setState(() {
       _enlarged = false;
       _enlargedMode = null;
     });
-    // 缩回前用上次记录的内容高度；下个 PostFrame 会 _resizeToContent 修正。
     await widget.window.shrinkToContent(_lastContentHeight);
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
+    }
   }
 
   /// ConfigPanel 保存回调：写回 _config、持久化，并同步 _results/_usages（增删 provider）。

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:codingplan_refresh/services/log_service.dart';
@@ -96,8 +97,16 @@ class LlmService {
       }
 
       final full = StringBuffer();
-      final lineStream =
-          response.stream.transform(utf8.decoder).transform(const LineSplitter());
+      // 给流式消费加总超时 120s（与首字节 send 一致，覆盖 stall）。超时向 sink 注入
+      // TimeoutException 并关闭流，被下方 await for 抛出，最终由 _callLlmOnce catch
+      // 兜底为 errorMessage。长输出场景 120s 总时长一般足够；若需更长可调。
+      final lineStream = response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(const Duration(seconds: 120), onTimeout: (sink) {
+        sink.addError(TimeoutException('SSE 流式响应超时（120s）'));
+        sink.close();
+      });
       await for (final line in lineStream) {
         if (SseParser.isDone(line)) break;
         final delta = SseParser.extractDeltaContent(line);

@@ -75,7 +75,11 @@ class _ConfigPanelState extends State<ConfigPanel> {
     return Container(
       color: const Color(0xE62D2D30),
       padding: const EdgeInsets.all(12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // 整面板包 SingleChildScrollView：内容超高（多 provider + 表单 + 语言）时可滚
+      // 到底部保存/取消按钮。注意 ScrollView 内 Column 不能用 Spacer/Expanded（主轴
+      // 无界），故删 Spacer；ReorderableListView 仍放 SizedBox(height:140) 给固定高。
+      child: SingleChildScrollView(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // provider 列表（可拖动）
         SizedBox(
           height: 140,
@@ -151,13 +155,13 @@ class _ConfigPanelState extends State<ConfigPanel> {
         const SizedBox(height: 6),
         Text(l.t('languageLabel'), style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 11)),
         Row(children: [_langBtn(0, l.t('languageAuto')), _langBtn(1, l.t('languageZh')), _langBtn(2, l.t('languageEn'))]),
-        const Spacer(),
         Row(children: [
           Expanded(child: ElevatedButton(onPressed: _onSave, child: Text(l.t('save')))),
           const SizedBox(width: 8),
           Expanded(child: ElevatedButton(onPressed: widget.onCancel, child: Text(l.t('cancel')))),
         ]),
       ]),
+      ),
     );
   }
 

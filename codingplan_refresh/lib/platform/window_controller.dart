@@ -9,23 +9,23 @@ import 'package:window_manager/window_manager.dart';
 /// `Size`/`Offset` 未定义而编译失败。方法为普通实例方法，便于测试以子类 override 注入。
 class WindowController {
   /// 初始化窗口：固定尺寸、居中、不可缩放、禁最大化、置顶。
-  /// [maxExpandedHeight] 为窗口最大展开高度（= ConfigService.expandedHeight），
-  /// 用作 maximumSize 上限，平移旧 MAUI `MaximumHeight = ExpandedHeight`。
-  /// 「禁最大化」由 setResizable(false) + setMaximizable(false) 实现（双平台），
-  /// 不引入 macos_window_utils。
+  ///
+  /// 不设 maximumSize——它会把窗口钳在 mini 上限（318），导致 enlarge(420×520)
+  /// 被 maximumSize 钳制而放大失败（Critical）。放大/缩回都靠 enlarge/shrinkToContent
+  /// 直接 setSize 设定，不受 maximumSize 约束。仅保留 minimumSize=Size(width,80)
+  /// 防内容为空时窗口过矮。禁拖拽/最大化由 setResizable(false)+setMaximizable(false)
+  /// 实现（双平台，maximumSize 在此冗余且有害）。
   Future<void> setup({
     required double width,
     required double height,
     required bool alwaysOnTop,
-    required double maxExpandedHeight,
   }) async {
     await windowManager.ensureInitialized();
-    // 不能用 `const WindowOptions(...)`——size/minimumSize/maximumSize 依赖
-    // 运行时入参 width/height，const 上下文会编译失败。这里走普通构造。
+    // 不能用 `const WindowOptions(...)`——size/minimumSize 依赖运行时入参
+    // width/height，const 上下文会编译失败。这里走普通构造。
     await windowManager.waitUntilReadyToShow(WindowOptions(
       size: Size(width, height),
-      minimumSize: Size(width, 120),
-      maximumSize: Size(width, maxExpandedHeight),
+      minimumSize: Size(width, 80),
       center: true,
       titleBarStyle: TitleBarStyle.normal,
     ), () async {
@@ -78,15 +78,21 @@ class WindowController {
     await windowManager.setSize(Size(330, contentHeight));
   }
 
-  /// 取主屏逻辑尺寸（physicalSize / devicePixelRatio）。
+  /// 取主屏逻辑尺寸（物理像素 / DPR）。
   ///
-  /// window_manager 0.5.x 无直接取屏 API（仅 setBounds/getWindowFrame）；
-  /// 用 PlatformDispatcher.views.first 的物理像素 / DPR 得逻辑像素，与
-  /// window_manager 内部坐标一致。多屏时 views.first = 主屏，已满足本工具需求。
-  /// 同步方法（platformDispatcher.views 在 FrameData 同步可取）。
+  /// 用 PlatformDispatcher.displays.first（Display 是显示器，size 为物理像素），
+  /// 而非 views.first（窗口视图，其尺寸跟随窗口当前大小，不是屏幕）。enlarge 的
+  /// clamp 依此判断窗口放大后是否超出屏幕工作区。多屏时 displays.first = 主屏，
+  /// 若窗口不在主屏则定位可能不准——本工具单屏够用，待多屏再补。
+  /// displays 在首帧前可能为空，此时 fallback 到 views.first 仅防崩溃。
   Size _screenSize() {
-    final view = WidgetsBinding.instance.platformDispatcher.views.first;
-    return view.physicalSize / view.devicePixelRatio;
+    final displays = WidgetsBinding.instance.platformDispatcher.displays;
+    if (displays.isEmpty) {
+      final view = WidgetsBinding.instance.platformDispatcher.views.first;
+      return view.physicalSize / view.devicePixelRatio;
+    }
+    final d = displays.first;
+    return d.size / d.devicePixelRatio;
   }
 
   /// 更新窗口标题（用量百分比 + level）。

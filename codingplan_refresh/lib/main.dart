@@ -37,7 +37,6 @@ Future<void> main() async {
     // isCollapsed 字段已移除（多组改造）；启动默认展开态，T6 由窗口状态机决定高度。
     height: ConfigService.expandedHeight,
     alwaysOnTop: config.isAlwaysOnTop,
-    maxExpandedHeight: ConfigService.expandedHeight,
   );
 
   runApp(_App(config: config, configService: configService, llm: llm, log: log, l10n: l10n, window: window));
