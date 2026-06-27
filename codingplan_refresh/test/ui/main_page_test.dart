@@ -7,6 +7,8 @@ import 'package:codingplan_refresh/services/llm_service.dart';
 import 'package:codingplan_refresh/services/localization_service.dart';
 import 'package:codingplan_refresh/services/log_service.dart';
 import 'package:codingplan_refresh/ui/main_page.dart';
+import 'package:codingplan_refresh/ui/widgets/config_panel.dart';
+import 'package:codingplan_refresh/ui/widgets/result_panel.dart';
 import 'package:codingplan_refresh/ui/widgets/usage_frame.dart';
 import 'package:codingplan_refresh/platform/window_controller.dart';
 
@@ -19,9 +21,14 @@ import 'package:codingplan_refresh/platform/window_controller.dart';
 class FakeWindowController extends WindowController {
   double? lastWidth;
   double? lastHeight;
+  double? enlargedW;
+  double? enlargedH;
+  double? shrunkH;
   bool? alwaysOnTop;
   int setHeightCalls = 0;
   int setAlwaysOnTopCalls = 0;
+  int enlargeCalls = 0;
+  int shrinkCalls = 0;
 
   @override
   Future<void> setup({
@@ -36,6 +43,19 @@ class FakeWindowController extends WindowController {
     lastWidth = width;
     lastHeight = h;
     setHeightCalls++;
+  }
+
+  @override
+  Future<void> enlarge({required double w, required double h}) async {
+    enlargedW = w;
+    enlargedH = h;
+    enlargeCalls++;
+  }
+
+  @override
+  Future<void> shrinkToContent(double contentHeight) async {
+    shrunkH = contentHeight;
+    shrinkCalls++;
   }
 
   @override
@@ -139,5 +159,121 @@ void main() {
     await tester.pump();
     // 非 bigmodel / 非 ark → 显示「未知厂商」，不会触发 HTTP / arkcli。
     expect(find.text('未知厂商，不支持用量查询'), findsOneWidget);
+  });
+
+  // ===== T8 放大态测试 =====
+
+  testWidgets('☰ 菜单「手动触发」→ 放大态 420×520 + 显示 ResultPanel', (tester) async {
+    final window = FakeWindowController();
+    await tester.pumpWidget(buildApp(
+      config: AppConfig(providers: [
+        ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+      ]),
+      window: window,
+    ));
+    await tester.pump();
+    expect(window.enlargeCalls, 0);
+    // 点击 ☰ → 「手动触发大模型」。
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('手动触发大模型'));
+    await tester.pumpAndSettle();
+    // 应调用 enlarge(420, 520)。
+    expect(window.enlargeCalls, 1);
+    expect(window.enlargedW, 420);
+    expect(window.enlargedH, 520);
+    // 放大态应显示 ResultPanel（触发按钮文案 manualTriggerPopup）。
+    expect(find.byType(ResultPanel), findsOneWidget);
+  });
+
+  testWidgets('☰ 菜单「设置」→ 放大态 + 显示 ConfigPanel', (tester) async {
+    final window = FakeWindowController();
+    await tester.pumpWidget(buildApp(
+      config: AppConfig(providers: [
+        ProviderConfig(id: 'p1', name: '智谱', apiUrl: 'https://x', apiKey: 'k'),
+      ]),
+      window: window,
+    ));
+    await tester.pump();
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+    expect(window.enlargeCalls, 1);
+    expect(find.byType(ConfigPanel), findsOneWidget);
+    // mini 态的 UsageFrame 应消失。
+    expect(find.byType(UsageFrame), findsNothing);
+  });
+
+  testWidgets('ConfigPanel 保存后 → _results/_usages 同步 + 缩回 mini',
+      (tester) async {
+    final window = FakeWindowController();
+    final dir = Directory.systemTemp.createTempSync('cfg_');
+    try {
+      final cs = ConfigService(dir);
+      await tester.pumpWidget(MaterialApp(
+        home: MainPage(
+          config: AppConfig(providers: [
+            ProviderConfig(id: 'p1', name: '智谱', apiUrl: 'https://x', apiKey: 'k'),
+            ProviderConfig(id: 'p2', name: '火山', apiUrl: 'https://y', apiKey: 'k'),
+          ]),
+          configService: cs,
+          llm: LlmService(LogService(dir)),
+          log: LogService(dir),
+          l10n: LocalizationService()..initialize('zh'),
+          window: window,
+        ),
+      ));
+      await tester.pump();
+      // 进设置放大态。
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('设置'));
+      await tester.pumpAndSettle();
+
+      // 删除 p2（点其「删除」→ 确认）。
+      await tester.tap(find.text('删除').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认'));
+      await tester.pumpAndSettle();
+      // 点保存。
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+
+      // 应缩回（shrinkToContent 被调用）。
+      expect(window.shrinkCalls, greaterThanOrEqualTo(1));
+      // mini 态只剩 1 个 UsageFrame（p2 已删）。
+      expect(find.byType(UsageFrame), findsOneWidget);
+      // 配置文件应持久化（含 1 个 provider）。
+      final saved = cs.load();
+      expect(saved.providers.length, 1);
+      expect(saved.providers.first.id, 'p1');
+    } finally {
+      dir.deleteSync(recursive: true);
+    }
+  });
+
+  testWidgets('放大态关闭按钮 → 缩回 mini 保留状态', (tester) async {
+    final window = FakeWindowController();
+    await tester.pumpWidget(buildApp(
+      config: AppConfig(providers: [
+        ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+      ]),
+      window: window,
+    ));
+    await tester.pump();
+    // 进手动触发放大态。
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('手动触发大模型'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ResultPanel), findsOneWidget);
+    // 点关闭（IconButton(Icons.close)）。
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    // 应缩回，mini 态恢复 UsageFrame。
+    expect(window.shrinkCalls, greaterThanOrEqualTo(1));
+    expect(find.byType(ResultPanel), findsNothing);
+    expect(find.byType(UsageFrame), findsOneWidget);
   });
 }

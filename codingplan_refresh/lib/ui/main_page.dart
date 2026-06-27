@@ -11,6 +11,7 @@ import '../services/usage_provider.dart';
 import '../services/scheduler_service.dart';
 import '../services/volc_ark_usage_provider.dart';
 import '../platform/window_controller.dart';
+import 'widgets/config_panel.dart';
 import 'widgets/result_panel.dart';
 import 'widgets/usage_frame.dart';
 
@@ -60,6 +61,11 @@ class _MainPageState extends State<MainPage> {
   Timer? _usageTimer;
   Timer? _triggerTimer;
   double _lastContentHeight = 0;
+
+  // 放大态：true 时窗口为 420×520，_enlargedMode 决定放大区显示哪个面板。
+  // 'config' → ConfigPanel（设置）；'trigger' → ResultPanel（手动触发，替代 T7 Dialog）。
+  bool _enlarged = false;
+  String? _enlargedMode;
 
   @override
   void initState() {
@@ -211,6 +217,57 @@ class _MainPageState extends State<MainPage> {
     }
   }
 
+  // ===== 放大态（T8）=====
+
+  /// 打开放大态：切到 [mode]（'config' / 'trigger'）并放大窗口到 420×520。
+  Future<void> _openEnlarged(String mode) async {
+    setState(() {
+      _enlarged = true;
+      _enlargedMode = mode;
+    });
+    await widget.window.enlarge(w: 420, h: 520);
+  }
+
+  /// 关闭放大态：缩回 mini（保留当前位置），由放大区面板的保存/取消/关闭触发。
+  Future<void> _closeEnlarged() async {
+    setState(() {
+      _enlarged = false;
+      _enlargedMode = null;
+    });
+    // 缩回前用上次记录的内容高度；下个 PostFrame 会 _resizeToContent 修正。
+    await widget.window.shrinkToContent(_lastContentHeight);
+  }
+
+  /// ConfigPanel 保存回调：写回 _config、持久化，并同步 _results/_usages（增删 provider）。
+  ///
+  /// 平移 T7 concern 收尾：用户在 ConfigPanel 增删/重排 providers 后，mini 态的
+  /// UsageFrame 列表与 ResultPanel 的下拉项都依赖 `_config.providers`（已随 setState
+  /// 更新），但运行时态 `_results`/`_usages` 是按 id 索引的 Map——新增 provider 没
+  /// 有对应条目会显示空、删除 provider 的残留条目会泄漏。这里按「以新 providers 为准」
+  /// 对齐：新增 id 加空 ResultState、删除 id 清其 _results/_usages/lastTriggerKeys。
+  void _onConfigSaved(AppConfig next, bool langChanged) {
+    final oldIds = _config.providers.map((p) => p.id).toSet();
+    final newIds = next.providers.map((p) => p.id).toSet();
+    // 删除：旧有新无 → 清运行时态 + 触发键。
+    for (final id in oldIds.difference(newIds)) {
+      _results.remove(id);
+      _usages.remove(id);
+      _config.lastTriggerKeys.remove(id);
+    }
+    // 新增：新有旧无 → 加空 ResultState（_usages 会在下个 _queryAllUsage 周期填充）。
+    for (final id in newIds.difference(oldIds)) {
+      _results[id] = ResultState();
+    }
+    setState(() {
+      _config = next;
+      if (langChanged) {
+        widget.l10n.initialize(next.language ?? 'auto');
+      }
+    });
+    widget.configService.save(_config);
+    _closeEnlarged();
+  }
+
   /// 测量内容高度 → setSize（高度自适应，仅超阈值才调避免抖动）。
   ///
   /// 通过 PostFrameCallback 在渲染完成后用 findRenderObject 取实际内容高，
@@ -242,82 +299,97 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
-    final l = widget.l10n;
     return Scaffold(
       backgroundColor: const Color(0xFF2D2D30),
-      body: Column(children: [
-        // 顶部栏：☰ 菜单 + 置顶外露
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-          child: Row(children: [
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.menu, color: Color(0xFFAAAAAA), size: 20),
-              tooltip: '',
-              onSelected: (v) async {
-                if (v == 'trigger') {
-                  // T8 改为真正的窗口放大态；此处先用 Dialog 占位显示 ResultPanel。
-                  await showDialog(
-                    context: context,
-                    builder: (_) => Dialog(
-                      child: SizedBox(
-                        width: 380,
-                        height: 460,
-                        child: ResultPanel(
-                          providers: _config.providers,
-                          getText: (id) => _results[id]?.text ?? '',
-                          getHeader: (id) => _results[id]?.header ?? '',
-                          onTrigger: (id) =>
-                              _callLlmOnce(id, manual: true),
-                          l10n: widget.l10n,
-                        ),
-                      ),
-                    ),
-                  );
-                } else if (v == 'config') {
-                  // T8 接入 ConfigPanel 放大态（配合 T5）。
-                }
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                    value: 'config', child: Text(l.t('settings'))),
-                PopupMenuItem(
-                    value: 'trigger', child: Text(l.t('manualTrigger'))),
-              ],
-            ),
-            const Spacer(),
-            Checkbox(
-              value: _config.isAlwaysOnTop,
-              onChanged: (v) {
-                setState(() => _config.isAlwaysOnTop = v ?? false);
-                widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
-                widget.configService.save(_config);
-              },
-            ),
-            Text(l.t('pinLabel'),
-                style: const TextStyle(color: Colors.white, fontSize: 12)),
-            const SizedBox(width: 4),
-          ]),
+      body: _enlarged ? _buildEnlarged() : _buildMini(),
+    );
+  }
+
+  /// 顶部栏：☰ 菜单 + 置顶外露（mini 与放大态共用）。
+  Widget _buildTopBar() {
+    final l = widget.l10n;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+      child: Row(children: [
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.menu, color: Color(0xFFAAAAAA), size: 20),
+          tooltip: '',
+          onSelected: (v) {
+            if (v == 'config') {
+              _openEnlarged('config');
+            } else if (v == 'trigger') {
+              _openEnlarged('trigger');
+            }
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(value: 'config', child: Text(l.t('settings'))),
+            PopupMenuItem(
+                value: 'trigger', child: Text(l.t('manualTrigger'))),
+          ],
         ),
-        // 用量框列表（每 provider 一个，ScrollView 可滚）
-        Expanded(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: _config.providers
-                    .map((p) => UsageFrame(
-                          result: _usages[p.id] ??
-                              const UsageResult('', [], null),
-                          l10n: l,
-                          resetText: _resetText,
-                        ))
-                    .toList(),
-              ),
+        const Spacer(),
+        Checkbox(
+          value: _config.isAlwaysOnTop,
+          onChanged: (v) {
+            setState(() => _config.isAlwaysOnTop = v ?? false);
+            widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
+            widget.configService.save(_config);
+          },
+        ),
+        Text(l.t('pinLabel'),
+            style: const TextStyle(color: Colors.white, fontSize: 12)),
+        const SizedBox(width: 4),
+      ]),
+    );
+  }
+
+  /// mini 态：顶部栏 + 每 provider 一个 UsageFrame（ScrollView 可滚）。
+  Widget _buildMini() {
+    final l = widget.l10n;
+    return Column(children: [
+      _buildTopBar(),
+      Expanded(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: _config.providers
+                  .map((p) => UsageFrame(
+                        result: _usages[p.id] ??
+                            const UsageResult('', [], null),
+                        l10n: l,
+                        resetText: _resetText,
+                      ))
+                  .toList(),
             ),
           ),
         ),
-      ]),
-    );
+      ),
+    ]);
+  }
+
+  /// 放大态：顶部栏（☰ + 置顶）+ 放大区按 [_enlargedMode] 铺 ConfigPanel/ResultPanel。
+  Widget _buildEnlarged() {
+    return Column(children: [
+      _buildTopBar(),
+      Expanded(
+        child: _enlargedMode == 'config'
+            ? ConfigPanel(
+                initial: _config,
+                l10n: widget.l10n,
+                onSave: _onConfigSaved,
+                onCancel: _closeEnlarged,
+              )
+            : ResultPanel(
+                providers: _config.providers,
+                getText: (id) => _results[id]?.text ?? '',
+                getHeader: (id) => _results[id]?.header ?? '',
+                onTrigger: (id) => _callLlmOnce(id, manual: true),
+                onClose: _closeEnlarged,
+                l10n: widget.l10n,
+              ),
+      ),
+    ]);
   }
 }

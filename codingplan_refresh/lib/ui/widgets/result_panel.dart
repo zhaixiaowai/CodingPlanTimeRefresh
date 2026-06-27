@@ -19,6 +19,9 @@ class ResultPanel extends StatefulWidget {
   /// 触发该 provider（手动）；返回是否成功（调用方用于决定是否关闭面板等）。
   final Future<bool> Function(String providerId) onTrigger;
   final LocalizationService l10n;
+  /// 关闭按钮回调。null 时走默认的 `Navigator.maybePop`（Dialog 用法）；
+  /// 放大态（非路由）由父级传入关闭缩回逻辑。
+  final VoidCallback? onClose;
 
   const ResultPanel({
     super.key,
@@ -27,6 +30,7 @@ class ResultPanel extends StatefulWidget {
     required this.getHeader,
     required this.onTrigger,
     required this.l10n,
+    this.onClose,
   });
 
   @override
@@ -82,7 +86,13 @@ class _ResultPanelState extends State<ResultPanel> {
             ),
             const Spacer(),
             IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
+              onPressed: () {
+                if (widget.onClose != null) {
+                  widget.onClose!();
+                } else {
+                  Navigator.of(context).maybePop();
+                }
+              },
               icon: const Icon(Icons.close, size: 16, color: Color(0xFFAAAAAA)),
               tooltip: '',
             ),
