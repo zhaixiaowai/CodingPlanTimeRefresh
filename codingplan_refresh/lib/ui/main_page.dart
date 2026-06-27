@@ -62,10 +62,8 @@ class _MainPageState extends State<MainPage> {
   Timer? _triggerTimer;
   double _lastContentHeight = 0;
 
-  // 高度自适应测量键：分别挂顶部栏与内容区（ScrollView 的 child），量各自
-  // RenderBox 实际渲染高，相加得到 mini 应有的窗口高。不能直接量 Scaffold
-  // （=窗口内容区高，启动即 318，永不收缩）——见 _resizeToContent。
-  final GlobalKey _topBarKey = GlobalKey();
+  // 高度自适应测量键：挂在 mini 的整个内容（topBar + 各 UsageFrame + padding）
+  // 外层（SingleChildScrollView 的 child），量其完整渲染高作为窗口内容高。
   final GlobalKey _contentKey = GlobalKey();
 
   // 放大态：true 时窗口为 420×520，_enlargedMode 决定放大区显示哪个面板。
@@ -291,24 +289,26 @@ class _MainPageState extends State<MainPage> {
     });
     widget.configService.save(_config);
     _closeEnlarged();
+    // 新增/改动的 provider 立即查一次用量，避免空白框等到下个 60s tick。
+    // （_closeEnlarged 已切回 mini 并排了 PostFrame 重测高度；这里异步查用量，
+    // 查完 setState 各框填充 + 再排一次 PostFrame 修正高度。）
+    _queryAllUsage();
   }
 
   /// 测量内容高度 → setHeight（高度自适应，仅超阈值才调避免抖动）。
   ///
-  /// mini 态要让窗口高 = 实际内容高（顶部栏 + 各 UsageFrame + padding），不能
-  /// 直接量 Scaffold（= 窗口内容区高，启动即 318，永不收缩）。故用 GlobalKey
-  /// 分别挂顶部栏与 ScrollView 的 child（Padding+Column），量各自 RenderBox
-  /// 实际渲染高相加。放大态不参与自适应（窗口固定 420×520），直接 return，
-  /// 否则会用 520 污染 _lastContentHeight，导致缩回 mini 时 shrinkToContent(520)。
+  /// mini 态把 topBar + 各 UsageFrame 全放进 SingleChildScrollView 的 child，
+  /// 用 _contentKey 挂在该 child，量其 RenderBox 完整渲染高（含 topBar + 全部
+  /// 框 + padding），一次量全，避免分段相加漏算顶部。放大态不参与自适应
+  /// （窗口固定 420×520），直接 return，否则会用 520 污染 _lastContentHeight，
+  /// 导致缩回 mini 时 shrinkToContent(520)。
   void _resizeToContent() {
     if (_enlarged) return;
     if (!mounted) return;
-    final topBarBox =
-        _topBarKey.currentContext?.findRenderObject() as RenderBox?;
     final contentBox =
         _contentKey.currentContext?.findRenderObject() as RenderBox?;
-    if (topBarBox == null || contentBox == null) return;
-    final h = topBarBox.size.height + contentBox.size.height;
+    if (contentBox == null) return;
+    final h = contentBox.size.height;
     if ((h - _lastContentHeight).abs() > 2) {
       _lastContentHeight = h;
       widget.window.setHeight(ConfigService.expandedWidth, h);
@@ -336,11 +336,10 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  /// 顶部栏：☰ 菜单 + 置顶外露（mini 与放大态共用）。
+  /// 顶部栏：☰ 菜单 + 置顶外露（mini 态用；放大态覆盖顶部栏，不渲染此）。
   Widget _buildTopBar() {
     final l = widget.l10n;
     return Padding(
-      key: _topBarKey,
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
       child: Row(children: [
         PopupMenuButton<String>(
@@ -375,54 +374,56 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  /// mini 态：顶部栏 + 每 provider 一个 UsageFrame（ScrollView 可滚）。
+  /// mini 态：顶部栏（☰+置顶）+ 每 provider 一个 UsageFrame。
+  /// 整体放进 SingleChildScrollView：内容超高可滚；高度自适应时量整个内容
+  /// （topBar + 各框 + padding）一次性，避免分段相加漏算。
   Widget _buildMini() {
     final l = widget.l10n;
-    return Column(children: [
-      _buildTopBar(),
-      Expanded(
-        child: SingleChildScrollView(
-          child: Padding(
-            key: _contentKey,
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: _config.providers
-                  .map((p) => UsageFrame(
-                        result: _usages[p.id] ??
-                            const UsageResult('', [], null),
-                        l10n: l,
-                        resetText: _resetText,
-                      ))
-                  .toList(),
+    return SingleChildScrollView(
+      child: Padding(
+        key: _contentKey,
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTopBar(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: _config.providers
+                    .map((p) => UsageFrame(
+                          result: _usages[p.id] ??
+                              const UsageResult('', [], null),
+                          l10n: l,
+                          resetText: _resetText,
+                        ))
+                    .toList(),
+              ),
             ),
-          ),
+          ],
         ),
       ),
-    ]);
+    );
   }
 
-  /// 放大态：顶部栏（☰ + 置顶）+ 放大区按 [_enlargedMode] 铺 ConfigPanel/ResultPanel。
+  /// 放大态：整个窗口铺满 ConfigPanel/ResultPanel，**覆盖顶部 ☰+置顶行**
+  /// （面板自带取消/✕ 关闭，不再外露顶部栏）。mini 态才显示 ☰+置顶。
   Widget _buildEnlarged() {
-    return Column(children: [
-      _buildTopBar(),
-      Expanded(
-        child: _enlargedMode == 'config'
-            ? ConfigPanel(
-                initial: _config,
-                l10n: widget.l10n,
-                onSave: _onConfigSaved,
-                onCancel: _closeEnlarged,
-              )
-            : ResultPanel(
-                providers: _config.providers,
-                getText: (id) => _results[id]?.text ?? '',
-                getHeader: (id) => _results[id]?.header ?? '',
-                onTrigger: (id) => _callLlmOnce(id, manual: true),
-                onClose: _closeEnlarged,
-                l10n: widget.l10n,
-              ),
-      ),
-    ]);
+    return _enlargedMode == 'config'
+        ? ConfigPanel(
+            initial: _config,
+            l10n: widget.l10n,
+            onSave: _onConfigSaved,
+            onCancel: _closeEnlarged,
+          )
+        : ResultPanel(
+            providers: _config.providers,
+            getText: (id) => _results[id]?.text ?? '',
+            getHeader: (id) => _results[id]?.header ?? '',
+            onTrigger: (id) => _callLlmOnce(id, manual: true),
+            onClose: _closeEnlarged,
+            l10n: widget.l10n,
+          );
   }
 }
