@@ -179,7 +179,29 @@ class _ConfigPanelState extends State<ConfigPanel> {
       content: Text('删除「${_providers[idx].name}」？', style: const TextStyle(fontSize: 12)),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-        TextButton(onPressed: () { Navigator.pop(ctx); setState(() { _providers.removeAt(idx); if (_selectedIdx >= _providers.length) _selectedIdx = _providers.length - 1; if (_selectedIdx >= 0) _loadFields(_selectedIdx); }); }, child: const Text('确认')),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(ctx);
+            setState(() {
+              // 删前先保存当前选中项的未提交编辑，避免被后续 _loadFields 覆盖丢失。
+              _saveCurrentFields();
+              _providers.removeAt(idx);
+              if (idx == _selectedIdx) {
+                // 删的是选中项：调整到合法位置并加载新选中项字段。
+                if (_selectedIdx >= _providers.length) {
+                  _selectedIdx = _providers.length - 1;
+                }
+                if (_selectedIdx >= 0) _loadFields(_selectedIdx);
+              } else if (idx < _selectedIdx) {
+                // 删在选中项之前：选中项整体前移一位，仍指向同一 provider
+                // （控制器值已由上方 _saveCurrentFields 保存，无需 _loadFields 覆盖）。
+                _selectedIdx -= 1;
+              }
+              // idx > _selectedIdx：删在选中项之后，_selectedIdx 与控制器均不变。
+            });
+          },
+          child: const Text('确认'),
+        ),
       ],
     ));
   }

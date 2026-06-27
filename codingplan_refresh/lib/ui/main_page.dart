@@ -62,6 +62,12 @@ class _MainPageState extends State<MainPage> {
   Timer? _triggerTimer;
   double _lastContentHeight = 0;
 
+  // 高度自适应测量键：分别挂顶部栏与内容区（ScrollView 的 child），量各自
+  // RenderBox 实际渲染高，相加得到 mini 应有的窗口高。不能直接量 Scaffold
+  // （=窗口内容区高，启动即 318，永不收缩）——见 _resizeToContent。
+  final GlobalKey _topBarKey = GlobalKey();
+  final GlobalKey _contentKey = GlobalKey();
+
   // 放大态：true 时窗口为 420×520，_enlargedMode 决定放大区显示哪个面板。
   // 'config' → ConfigPanel（设置）；'trigger' → ResultPanel（手动触发，替代 T7 Dialog）。
   bool _enlarged = false;
@@ -122,8 +128,12 @@ class _MainPageState extends State<MainPage> {
 
   // ===== LLM 触发（定时遍历所有 providers + per-provider ResultState）=====
 
-  /// 全局触发去重键（沿用单值语义：整点命中后所有 provider 都触发一次）。
-  /// 存 `lastTriggerKeys['__global__']`，命中后写入；自动失败时清空允许重试。
+  /// 全局触发时刻去重键：触发是全局时刻（01/07/13/19 点整），所有 provider 共享
+  /// 同一触发时刻，故用一个 `__global__` key 判定「该整点是否已触发过」即可。
+  /// 命中后写入；**失败不清 key**——自动失败的「立即重试」由 _callLlmWithRetry
+  /// 的 3 次循环负责（isRetrying 防并发），下个触发时刻才整点再触发所有 provider。
+  /// 这样 A 成功 B 失败时 B 走重试循环、A 不会被重复触发（旧 MAUI 清单值 key 会导致
+  /// A 被重复打）；A 在下个整点多调一次可接受（与旧 MAUI 一致）。
   String _globalTriggerKey() => _config.lastTriggerKeys['__global__'] ?? '';
   void _setGlobalTriggerKey(String k) =>
       _config.lastTriggerKeys['__global__'] = k;
@@ -142,8 +152,10 @@ class _MainPageState extends State<MainPage> {
 
   /// per-provider 单次调用（节流 50ms 更新该 provider ResultState.text）。
   ///
-  /// [manual] = true 表示手动触发（失败不清全局 key，让定时仍可在下个时段重试）；
-  /// 自动触发失败时清全局 key 允许下一 tick 立即重试。返回是否成功。
+  /// [manual] = true 表示手动触发（直接调一次，不进入重试循环）；自动触发由
+  /// _callLlmWithRetry 包裹（3 次重试）。失败**不清全局触发键**——自动失败的
+  /// 「立即重试」由重试循环负责（isRetrying 防并发），下个整点才再触发（见
+  /// _globalTriggerKey 说明，避免 A 成功 B 失败时 A 被重复打）。返回是否成功。
   Future<bool> _callLlmOnce(String providerId, {required bool manual}) async {
     if (providerId.isEmpty) return false;
     final p = _config.providers.firstWhere(
@@ -183,11 +195,9 @@ class _MainPageState extends State<MainPage> {
       }
       return true;
     } catch (e) {
-      if (!manual) {
-        // 自动失败清全局 key，允许下个 tick 重试（与旧 MAUI 一致）。
-        _setGlobalTriggerKey('');
-        widget.configService.save(_config);
-      }
+      // 失败不清全局触发键：自动失败的「立即重试」由 _callLlmWithRetry 的 3 次循环
+      // 负责（isRetrying 防并发），下个整点才再触发（避免 A 成功 B 失败时 A 被重复打）。
+      // [manual] 在此无副作用，仅作语义标记（手动不进重试循环，由调用方控制）。
       rs.text = e is LlmException
           ? widget.l10n.t(e.l10nKey).fmt(e.args)
           : widget.l10n.t('errorMessage').fmt(['$e']);
@@ -268,16 +278,22 @@ class _MainPageState extends State<MainPage> {
     _closeEnlarged();
   }
 
-  /// 测量内容高度 → setSize（高度自适应，仅超阈值才调避免抖动）。
+  /// 测量内容高度 → setHeight（高度自适应，仅超阈值才调避免抖动）。
   ///
-  /// 通过 PostFrameCallback 在渲染完成后用 findRenderObject 取实际内容高，
-  /// 与上次记录差值 > 2px 才调 setHeight；阈值防抖避免每次 setState 都重设窗口。
+  /// mini 态要让窗口高 = 实际内容高（顶部栏 + 各 UsageFrame + padding），不能
+  /// 直接量 Scaffold（= 窗口内容区高，启动即 318，永不收缩）。故用 GlobalKey
+  /// 分别挂顶部栏与 ScrollView 的 child（Padding+Column），量各自 RenderBox
+  /// 实际渲染高相加。放大态不参与自适应（窗口固定 420×520），直接 return，
+  /// 否则会用 520 污染 _lastContentHeight，导致缩回 mini 时 shrinkToContent(520)。
   void _resizeToContent() {
-    final ctx = context;
+    if (_enlarged) return;
     if (!mounted) return;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final h = box.size.height;
+    final topBarBox =
+        _topBarKey.currentContext?.findRenderObject() as RenderBox?;
+    final contentBox =
+        _contentKey.currentContext?.findRenderObject() as RenderBox?;
+    if (topBarBox == null || contentBox == null) return;
+    final h = topBarBox.size.height + contentBox.size.height;
     if ((h - _lastContentHeight).abs() > 2) {
       _lastContentHeight = h;
       widget.window.setHeight(ConfigService.expandedWidth, h);
@@ -309,6 +325,7 @@ class _MainPageState extends State<MainPage> {
   Widget _buildTopBar() {
     final l = widget.l10n;
     return Padding(
+      key: _topBarKey,
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
       child: Row(children: [
         PopupMenuButton<String>(
@@ -351,6 +368,7 @@ class _MainPageState extends State<MainPage> {
       Expanded(
         child: SingleChildScrollView(
           child: Padding(
+            key: _contentKey,
             padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

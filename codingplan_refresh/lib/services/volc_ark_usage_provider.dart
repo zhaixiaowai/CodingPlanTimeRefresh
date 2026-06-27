@@ -15,11 +15,18 @@ class VolcArkUsageProvider implements UsageProvider {
   static Future<String> _realRunner({required List<String> args, required Duration timeout}) async {
     // Windows 上 arkcli 是 .cmd；走 runInShell 让 shell 解析。
     // 用 Process.start 而非 Process.run，以便超时时 process.kill 真正杀子进程（Process.run 无句柄，超时会留僵尸 arkcli）。
+    //
+    // 局限说明（runInShell:true）：经 cmd.exe 启动 arkcli（.cmd → node 子进程），
+    // proc.kill(sigkill) 仅杀 cmd.exe shell，arkcli 的 node 子进程可能成孤儿。
+    // dart:io 无 Job Object 绑定能力，无法可靠杀整棵子进程树。超时是罕见路径
+    // （10s），kill 仍做（比不 kill 强，至少 shell 被杀、stdout 管道关闭）；
+    // 下线前评估平台插件方案（如 process_group / windows_task_scheduler）。
     final proc = await Process.start('arkcli', args, runInShell: true);
     try {
       final stdout = await proc.stdout.transform(utf8.decoder).join().timeout(
         timeout,
         onTimeout: () {
+          // 见上文局限说明：仅杀 shell，arkcli node 子进程可能成孤儿。
           proc.kill(ProcessSignal.sigkill);
           throw TimeoutException('arkcli timeout', timeout);
         },

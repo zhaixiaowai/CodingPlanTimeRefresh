@@ -276,4 +276,30 @@ void main() {
     expect(find.byType(ResultPanel), findsNothing);
     expect(find.byType(UsageFrame), findsOneWidget);
   });
+
+  // ===== mini 高度自适应回归测试 =====
+
+  testWidgets('mini 高度自适应：多 provider 渲染后 setHeight 被调且高度 < 520',
+      (tester) async {
+    final window = FakeWindowController();
+    await tester.pumpWidget(buildApp(
+      config: AppConfig(providers: [
+        ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+        ProviderConfig(id: 'p2', apiUrl: 'https://y', apiKey: 'k'),
+      ]),
+      window: window,
+    ));
+    // pump 触发首帧 + initState 末尾的 PostFrameCallback(_resizeToContent)；
+    // 再 pump 一次触发 _queryAllUsage 末尾排的 PostFrameCallback（未知厂商同步完成）。
+    await tester.pump();
+    await tester.pump();
+    // setHeight 应被调用（mini 高度自适应量到实际内容高）。
+    expect(window.setHeightCalls, greaterThanOrEqualTo(1));
+    // 高度应是实际内容高（顶部栏 + 2 个 UsageFrame），不是启动高 520 / 测试 surface 600。
+    // 修复前量 Scaffold（=600）会在此断言失败；修复后量内容（~120-180）通过。
+    expect(window.lastHeight, lessThan(520));
+    expect(window.lastHeight, greaterThan(50));
+    // 宽度固定 330。
+    expect(window.lastWidth, 330);
+  });
 }
