@@ -337,40 +337,52 @@ class _MainPageState extends State<MainPage> {
   }
 
   /// 顶部栏：☰ 菜单 + 置顶外露（mini 态用；放大态覆盖顶部栏，不渲染此）。
+  /// 控件用 compact density + 受限高度，避免 Material 默认 48px 触摸目标撑高行。
   Widget _buildTopBar() {
     final l = widget.l10n;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-      child: Row(children: [
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.menu, color: Color(0xFFAAAAAA), size: 20),
-          tooltip: '',
-          onSelected: (v) {
-            if (v == 'config') {
-              _openEnlarged('config');
-            } else if (v == 'trigger') {
-              _openEnlarged('trigger');
-            }
-          },
-          itemBuilder: (_) => [
-            PopupMenuItem(value: 'config', child: Text(l.t('settings'))),
-            PopupMenuItem(
-                value: 'trigger', child: Text(l.t('manualTrigger'))),
-          ],
-        ),
-        const Spacer(),
-        Checkbox(
-          value: _config.isAlwaysOnTop,
-          onChanged: (v) {
-            setState(() => _config.isAlwaysOnTop = v ?? false);
-            widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
-            widget.configService.save(_config);
-          },
-        ),
-        Text(l.t('pinLabel'),
-            style: const TextStyle(color: Colors.white, fontSize: 12)),
-        const SizedBox(width: 4),
-      ]),
+      padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          PopupMenuButton<String>(
+            iconSize: 18,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minHeight: 26, minWidth: 26),
+            tooltip: '',
+            icon: const Icon(Icons.menu, color: Color(0xFFAAAAAA), size: 18),
+            onSelected: (v) {
+              if (v == 'config') {
+                _openEnlarged('config');
+              } else if (v == 'trigger') {
+                _openEnlarged('trigger');
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'config', child: Text(l.t('settings'))),
+              PopupMenuItem(
+                  value: 'trigger', child: Text(l.t('manualTrigger'))),
+            ],
+          ),
+          const Spacer(),
+          SizedBox(
+            height: 26,
+            child: Checkbox(
+              value: _config.isAlwaysOnTop,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              onChanged: (v) {
+                setState(() => _config.isAlwaysOnTop = v ?? false);
+                widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
+                widget.configService.save(_config);
+              },
+            ),
+          ),
+          Text(l.t('pinLabel'),
+              style: const TextStyle(color: Colors.white, fontSize: 12)),
+          const SizedBox(width: 4),
+        ],
+      ),
     );
   }
 

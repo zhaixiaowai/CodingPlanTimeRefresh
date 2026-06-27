@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' show Offset, Size;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:window_manager/window_manager.dart';
@@ -43,39 +44,81 @@ class WindowController {
 
   /// 设置窗口尺寸。
   ///
-  /// 注意：macOS 下 window_manager 的 setSize 设的是 frame 还是 content 不确定。
-  /// 旧 MAUI 在 macOS 用 `setContentSize:` 并扣 28 标题栏（MacTitleBarHeight）；
-  /// 若 window_manager 设的是 content 尺寸则需在此 -28，若设 frame 则等价。
-  /// **待 Mac 实测确认**——当前 Windows 行为正常，保持直接 setSize。
-  Future<void> setHeight(double width, double h) =>
-      windowManager.setSize(Size(width, h));
+  /// **Windows 标题栏+边框补偿**：`window_manager.setSize` 走 `SetWindowPos` 设的是
+  /// 窗口**外框**尺寸（含标题栏+边框），但传入的 h 是客户区**内容高**（Flutter 渲染
+  /// 的 Scaffold.body）。若直接 setSize(330, 内容高)，客户区 = 内容高 - 标题栏(~32)
+  /// - 边框(~8) ≈ 内容高-40，内容被裁、出现滚动条。故 Windows 上用 AdjustWindowRectEx
+  /// 按「内容高=客户区」算出对应外框高再 setSize（DPI 安全，非硬编码 40）。
+  ///
+  /// macOS：window_manager 的 setSize 设 frame 还是 content 待实测（旧 MAUI 用
+  /// setContentSize 扣 28）。当前保持直接 setSize，待 Mac 实测后按需补偿。
+  Future<void> setHeight(double width, double h) async {
+    final frame = await _frameRectForClient(width, h);
+    await windowManager.setSize(Size(width, frame.height));
+  }
+
+  /// 缩回 mini（自适应高度，保留当前位置）。
+  Future<void> shrinkToContent(double contentHeight) async {
+    final frame = await _frameRectForClient(330, contentHeight);
+    await windowManager.setSize(Size(330, frame.height));
+  }
+
+  /// 按「客户区尺寸=传入的 w/h」反推窗口外框尺寸（含标题栏+边框补偿）。
+  ///
+  /// 零依赖方案（不调 win32 AdjustWindowRectEx，避免 API 版本差异）：用
+  /// `windowManager.getSize()`（外框逻辑像素）与 `platformDispatcher.views.first`
+  /// 的物理视图尺寸/dpr（客户区渲染面逻辑像素）反推差值 = 标题栏+边框补偿。
+  /// 差值按宽/高分别缓存（窗口 style 不变，标题栏+边框固定）。首次调用时
+  /// 测量并缓存；macOS setSize 设 frame 还是 content 待实测，暂用同补偿。
+  Size? _cachedFrameOffset;
+
+  Future<Size> _frameRectForClient(double clientW, double clientH) async {
+    final offset = await _frameOffset();
+    return Size(clientW + offset.width, clientH + offset.height);
+  }
+
+  Future<Size> _frameOffset() async {
+    if (_cachedFrameOffset != null) return _cachedFrameOffset!;
+    try {
+      final frame = await windowManager.getSize(); // 外框逻辑像素
+      final view = WidgetsBinding.instance.platformDispatcher.views.first;
+      final client = view.physicalSize / view.devicePixelRatio; // 客户区逻辑像素
+      final dx = frame.width - client.width;
+      final dy = frame.height - client.height;
+      // 客户区可能因刚 setSize 还没同步而偏小，dx/dy 应 ≥0（标题栏+边框）。
+      // 若测到负值（同步异常），退化用 Windows 标准补偿（16/40）。
+      if (dx < 0 || dy < 0) {
+        _cachedFrameOffset = const Size(16, 40);
+      } else {
+        _cachedFrameOffset = Size(dx, dy);
+      }
+    } catch (_) {
+      _cachedFrameOffset = const Size(16, 40);
+    }
+    return _cachedFrameOffset!;
+  }
 
   /// 放大到目标尺寸，若超出屏幕工作区则平移窗口留在屏内。
   ///
   /// 算法：取当前位置 + 目标尺寸，若右/下边超出屏幕宽/高，则把 x/y 内移到
   /// `(screen - w/h)`（clamp 到 0..screen 防 w/h 超屏时越界）。先平移再 setSize，
   /// 避免先放大再平移期间短暂溢出闪现。
+  /// 放大到目标**客户区**尺寸，若超出屏幕工作区则平移窗口留在屏内。
+  /// 内部按客户区算外框（含标题栏+边框补偿）后 setSize，与 setHeight 一致。
   Future<void> enlarge({required double w, required double h}) async {
+    final frame = await _frameRectForClient(w, h);
     final pos = await windowManager.getPosition();
     final screen = _screenSize();
     double x = pos.dx;
     double y = pos.dy;
-    if (x + w > screen.width) {
-      x = (screen.width - w).clamp(0.0, screen.width);
+    if (x + frame.width > screen.width) {
+      x = (screen.width - frame.width).clamp(0.0, screen.width);
     }
-    if (y + h > screen.height) {
-      y = (screen.height - h).clamp(0.0, screen.height);
+    if (y + frame.height > screen.height) {
+      y = (screen.height - frame.height).clamp(0.0, screen.height);
     }
     await windowManager.setPosition(Offset(x, y));
-    await windowManager.setSize(Size(w, h));
-  }
-
-  /// 缩回 mini（自适应高度，保留当前位置）。
-  ///
-  /// 放大态关闭后调用：宽度回到 expandedWidth（330），高度由调用方按内容测量传入。
-  /// 不改 position——放大时若曾平移到屏内，缩回后仍停在该处（用户视区内，符合预期）。
-  Future<void> shrinkToContent(double contentHeight) async {
-    await windowManager.setSize(Size(330, contentHeight));
+    await windowManager.setSize(Size(frame.width, frame.height));
   }
 
   /// 取主屏逻辑尺寸（物理像素 / DPR）。
