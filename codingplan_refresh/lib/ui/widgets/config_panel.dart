@@ -84,12 +84,12 @@ class _ConfigPanelState extends State<ConfigPanel> {
             onReorder: (oldI, newI) {
               setState(() {
                 _saveCurrentFields();
+                // 拖动前记选中 id，重排后重新定位（避免选中跳到被拖动项）
+                final selId = _selectedIdx >= 0 ? _providers[_selectedIdx].id : null;
                 if (newI > oldI) newI -= 1;
                 final p = _providers.removeAt(oldI);
                 _providers.insert(newI, p);
-                // 重新定位选中
-                final selId = _selectedIdx >= 0 ? _providers[newI].id : null;
-                _selectedIdx = _providers.indexWhere((e) => e.id == selId);
+                _selectedIdx = selId == null ? -1 : _providers.indexWhere((e) => e.id == selId);
                 if (_selectedIdx >= 0) _loadFields(_selectedIdx);
               });
             },
