@@ -375,15 +375,16 @@ class _MainPageState extends State<MainPage> {
   }
 
   /// mini 态：顶部栏（☰+置顶）+ 每 provider 一个 UsageFrame。
-  /// 整体放进 SingleChildScrollView：内容超高可滚；高度自适应时量整个内容
-  /// （topBar + 各框 + padding）一次性，避免分段相加漏算。
+  /// 整体放进 SingleChildScrollView：内容超高可滚；高度自适应时量内层 Column
+  /// 的完整渲染高（topBar + 各框，Column 在 unbounded 约束下按 intrinsic 撑开，
+  /// 不受 viewport 干扰），含置顶行，避免漏算顶部。
   Widget _buildMini() {
     final l = widget.l10n;
     return SingleChildScrollView(
       child: Padding(
-        key: _contentKey,
         padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
         child: Column(
+          key: _contentKey,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildTopBar(),
