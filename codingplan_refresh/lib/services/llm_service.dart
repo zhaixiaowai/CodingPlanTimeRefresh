@@ -97,9 +97,10 @@ class LlmService {
       }
 
       final full = StringBuffer();
-      // 给流式消费加总超时 120s（与首字节 send 一致，覆盖 stall）。超时向 sink 注入
-      // TimeoutException 并关闭流，被下方 await for 抛出，最终由 _callLlmOnce catch
-      // 兜底为 errorMessage。长输出场景 120s 总时长一般足够；若需更长可调。
+      // 给流式消费加空闲超时 120s（Stream.timeout 是间隔超时：每收到一行重置计时，
+      // 覆盖「服务端发头后挂住、长时间无新行」的 stall，不是总时长上限——活跃流
+      // 按 <120s 间隔持续输出可超过 120s）。超时向 sink 注入 TimeoutException 并关闭流，
+      // 被下方 await for 抛出，最终由 _callLlmOnce catch 兜底为 errorMessage。
       final lineStream = response.stream
           .transform(utf8.decoder)
           .transform(const LineSplitter())
