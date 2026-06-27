@@ -5,7 +5,7 @@ import 'package:codingplan_refresh/models/usage_info.dart';
 import 'package:codingplan_refresh/services/usage_provider.dart';
 
 /// 火山方舟用量：通过本地 arkcli 子进程查询 `arkcli usage plan`，10s 超时。
-/// runner 抽象便于测试注入（生产用默认 _realRunner 调 Process.run）。
+/// runner 抽象便于测试注入（生产用默认 _realRunner 调 Process.start，超时 kill 子进程）。
 typedef ArkRunner = Future<String> Function({required List<String> args, required Duration timeout});
 
 class VolcArkUsageProvider implements UsageProvider {
@@ -14,13 +14,28 @@ class VolcArkUsageProvider implements UsageProvider {
 
   static Future<String> _realRunner({required List<String> args, required Duration timeout}) async {
     // Windows 上 arkcli 是 .cmd；走 runInShell 让 shell 解析。
-    final result = await Process.run('arkcli', args, runInShell: true)
-        .timeout(timeout, onTimeout: () => throw TimeoutException('arkcli timeout', timeout));
-    if (result.exitCode != 0) {
-      // 进程失败（含超时杀掉）：stderr 当失败描述
-      throw ProcessException('arkcli', args, result.stderr.toString());
+    // 用 Process.start 而非 Process.run，以便超时时 process.kill 真正杀子进程（Process.run 无句柄，超时会留僵尸 arkcli）。
+    final proc = await Process.start('arkcli', args, runInShell: true);
+    try {
+      final stdout = await proc.stdout.transform(utf8.decoder).join().timeout(
+        timeout,
+        onTimeout: () {
+          proc.kill(ProcessSignal.sigkill);
+          throw TimeoutException('arkcli timeout', timeout);
+        },
+      );
+      final exitCode = await proc.exitCode;
+      if (exitCode != 0) {
+        // 进程失败（含超时杀掉）：stderr 当失败描述
+        final stderr = await proc.stderr.transform(utf8.decoder).join();
+        throw ProcessException('arkcli', args, stderr);
+      }
+      return stdout;
+    } catch (_) {
+      // 异常路径也确保 kill（proc.kill 对已退出进程是 no-op）
+      proc.kill(ProcessSignal.sigkill);
+      rethrow;
     }
-    return result.stdout.toString();
   }
 
   @override
