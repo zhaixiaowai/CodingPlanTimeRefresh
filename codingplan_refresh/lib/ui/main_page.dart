@@ -121,7 +121,38 @@ class _MainPageState extends State<MainPage> {
       setState(() => _usages[p.id] = result);
     }
     if (!mounted) return;
+    // 更新窗口标题：每 provider 一组「5h%/周%」，多 provider 用 | 连接。
+    await widget.window.setTitle(_buildWindowTitle());
     WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
+  }
+
+  /// 拼接窗口标题：按 _config.providers 顺序，每个 provider 取 5h + 周 百分比。
+  /// - 单 provider 有 5h+周：`30/70`；只有 5h：`30`；无 5h：空串。
+  /// - 多 provider：`30/70 | 45/80`（各 provider 组用 | 连）。
+  /// 百分比四舍五入为整数。失败的 provider（errorMessage 非 null）跳过。
+  String _buildWindowTitle() {
+    final groups = <String>[];
+    for (final p in _config.providers) {
+      final u = _usages[p.id];
+      if (u == null || u.errorMessage != null) continue;
+      int? h5 = _pctOf(u, 'token5h');
+      int? weekly = _pctOf(u, 'tokenWeekly');
+      if (h5 == null && weekly == null) continue;
+      final parts = <String>[];
+      if (h5 != null) parts.add('$h5');
+      if (weekly != null) parts.add('$weekly');
+      if (parts.isEmpty) continue;
+      groups.add(parts.join('/'));
+    }
+    return groups.join(' | ');
+  }
+
+  /// 从 UsageResult 取指定 labelKey 的百分比（四舍五入整数），无则 null。
+  int? _pctOf(UsageResult u, String labelKey) {
+    for (final it in u.items) {
+      if (it.labelKey == labelKey) return it.percentage.round();
+    }
+    return null;
   }
 
   // ===== LLM 触发（定时遍历所有 providers + per-provider ResultState）=====
