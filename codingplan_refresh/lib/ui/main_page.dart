@@ -127,8 +127,8 @@ class _MainPageState extends State<MainPage> {
   }
 
   /// 拼接窗口标题：按 _config.providers 顺序，每个 provider 一组
-  /// `{厂商}{套餐}:{5h}/{周}`，多 provider 用空格连。
-  /// - vendorTitle 已含厂商+套餐（如「智谱 Pro」「火山方舟 Pro」）。
+  /// `{厂商}:{5h}/{周}`，多 provider 用空格连。
+  /// - 厂商名从 vendorTitle 取空格前部分（如「智谱 Pro」→「智谱」）。
   /// - 有 5h+周：`0/100`；只有 5h：`0`；只周：`100`。
   /// 百分比四舍五入为整数；失败的 provider（errorMessage 非 null）跳过。
   /// 全部无用量时返回应用名兜底。
@@ -144,7 +144,8 @@ class _MainPageState extends State<MainPage> {
       if (h5 != null) parts.add('$h5');
       if (weekly != null) parts.add('$weekly');
       if (parts.isEmpty) continue;
-      groups.add('${u.vendorTitle}:${parts.join('/')}');
+      final vendor = u.vendorTitle.split(' ').first;
+      groups.add('$vendor：${parts.join('/')}');
     }
     return groups.isEmpty ? 'Coding Plan Time Refresh' : groups.join(' ');
   }
