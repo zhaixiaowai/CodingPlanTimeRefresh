@@ -164,11 +164,9 @@ class _MainPageState extends State<MainPage> {
       if (h5 != null) parts.add('$h5');
       if (weekly != null) parts.add('$weekly');
       if (parts.isEmpty) continue;
-      // 厂商名优先用用户输入的 ProviderConfig.name；为空（未填）才 fallback 到查询
-      // 返回的 vendorTitle 取空格前部分（如「智谱 Pro」→「智谱」），保留旧逻辑。
-      final vendor = p.name.isNotEmpty
-          ? p.name
-          : u.vendorTitle.split(' ').first;
+      // 显示名优先用用户输入的 ProviderConfig.name，但保留 vendorTitle 的套餐部分
+      // （「智谱 Pro」的「Pro」）——避免只替换名称时丢套餐。详见 usageDisplayTitle。
+      final vendor = usageDisplayTitle(p.name, u.vendorTitle);
       groups.add('$vendor：${parts.join('/')}');
     }
     return groups.isEmpty ? 'Coding Plan Time Refresh' : groups.join(' ');

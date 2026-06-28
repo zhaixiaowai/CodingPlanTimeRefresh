@@ -80,9 +80,9 @@ class UsageFrame extends StatelessWidget {
                 color: const Color(0xFF2D2D30), // 遮住边框，形成 legend 缺口
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
-                  (displayName != null && displayName!.isNotEmpty)
-                      ? displayName!
-                      : result.vendorTitle,
+                  // 优先用户输入的 displayName，但保留 vendorTitle 套餐部分（「Pro」），
+                  // 避免只替换名称时丢套餐。详见 usageDisplayTitle。
+                  usageDisplayTitle(displayName ?? '', result.vendorTitle),
                   style: const TextStyle(
                     color: Color(0xFFAAAAAA),
                     fontSize: 11,
