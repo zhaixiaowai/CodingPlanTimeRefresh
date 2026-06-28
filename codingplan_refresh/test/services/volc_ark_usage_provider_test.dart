@@ -87,4 +87,22 @@ void main() {
     final r = await provider.query();
     expect(r.errorMessage, '查询超时');
   });
+
+  test('refresh_token invalid → 延迟1s重试一次后成功', () async {
+    var callCount = 0;
+    final provider = VolcArkUsageProvider(runner: ({required List<String> args, required Duration timeout}) async {
+      if (args.contains('plans')) return _runnerReturn(args);
+      callCount++;
+      if (callCount == 1) {
+        // 首次返回 refresh_token invalid
+        return '{"ok":false,"error":{"type":"error","message":"The request parameter refresh_token is invalid"}}';
+      }
+      // 重试返回正常 usage
+      return _runnerReturn(args);
+    });
+    final r = await provider.query();
+    expect(r.errorMessage, isNull);
+    expect(r.vendorTitle, '火山方舟 Pro');
+    expect(callCount, 2); // 首次 + 重试
+  });
 }

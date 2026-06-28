@@ -47,8 +47,10 @@ class VolcArkUsageProvider implements UsageProvider {
 
   @override
   Future<UsageResult> query() async {
-    // 1) 用量百分比：arkcli usage plan
-    final usageStdout = await _runSafe(['usage', 'plan']);
+    // 1) 用量百分比：arkcli usage plan。
+    //    若返回 refresh_token invalid（arkcli 的 STS 临时凭证未落地），延迟 1s 重试一次。
+    final first = await _runSafe(['usage', 'plan']);
+    final usageStdout = await _maybeRetryOnRefreshToken(first, ['usage', 'plan']);
     if (usageStdout.isError) {
       return UsageResult('火山方舟', [], usageStdout.error!);
     }
@@ -61,6 +63,32 @@ class VolcArkUsageProvider implements UsageProvider {
         ? '火山方舟 ${tier[0].toUpperCase()}${tier.substring(1)}'
         : parsed.title;
     return UsageResult(title, parsed.items, parsed.errorMessage);
+  }
+
+  /// 若调用结果含 refresh_token invalid 错误，延迟 1s 重试一次（arkcli 的 STS
+  /// 临时凭证偶发未落地，重试通常即恢复）。否则原样返回。
+  Future<_RunResult> _maybeRetryOnRefreshToken(
+      _RunResult first, List<String> args) async {
+    final errText = first.isError
+        ? first.error!
+        : _extractError(first.value ?? '');
+    if (!errText.contains('The request parameter refresh_token is invalid')) {
+      return first;
+    }
+    await Future.delayed(const Duration(seconds: 1));
+    return _runSafe(args);
+  }
+
+  /// 从 usage plan stdout 提取 ok:false 的 error.message（用于判 refresh_token 错误）。
+  String _extractError(String stdout) {
+    try {
+      final doc = jsonDecode(stdout) as Map<String, dynamic>;
+      if (doc['ok'] == false) {
+        final err = doc['error'];
+        if (err is Map) return err['message'] as String? ?? '';
+      }
+    } catch (_) {}
+    return '';
   }
 
   /// 调用 arkcli 子命令，统一处理异常 → (error 不为 null 即失败)。
