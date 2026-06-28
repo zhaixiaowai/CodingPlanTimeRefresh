@@ -14,12 +14,17 @@ class UsageFrame extends StatelessWidget {
   /// result.vendorTitle（查询返回的「智谱 Pro」等）。
   final String? displayName;
 
+  /// 是否首次查询中（无旧数据）。为 true 且 items 空、无错误时显示「用量查询中...」；
+  /// 有旧数据（items 非空或有 errorMessage）时正常显示旧内容（无感刷新）。
+  final bool isLoading;
+
   const UsageFrame({
     super.key,
     required this.result,
     required this.l10n,
     required this.resetText,
     this.displayName,
+    this.isLoading = false,
   });
 
   static Color pctColor(double p) {
@@ -49,7 +54,10 @@ class UsageFrame extends StatelessWidget {
             child: result.items.isEmpty
                 ? Center(
                     child: Text(
-                      result.errorMessage ?? '',
+                      // 优先错误信息；无错误且首次查询中 → loading 占位；
+                      // 否则空（边缘：非 loading 且无 items 无错误）。
+                      result.errorMessage ??
+                          (isLoading ? l10n.t('usageLoading') : ''),
                       style: const TextStyle(
                         color: Color(0xFF999999),
                         fontSize: 11,

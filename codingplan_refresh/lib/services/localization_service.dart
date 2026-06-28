@@ -18,10 +18,7 @@ class LocalizationService {
     // ManualTriggerButton
     'manualTrigger': {'zh': '手动触发大模型', 'en': 'Trigger LLM'},
     // ManualTriggerPopupButton
-    'manualTriggerPopup': {
-      'zh': '手动触发,让模型讲个冷笑话',
-      'en': 'Trigger a joke'
-    },
+    'manualTriggerPopup': {'zh': '手动触发,让模型讲个冷笑话', 'en': 'Trigger a joke'},
     // WaitingPlaceholder
     'waitingPlaceholder': {'zh': '等待触发...', 'en': 'Waiting...'},
     // ResultHeader
@@ -55,40 +52,49 @@ class LocalizationService {
     'languageEn': {'zh': 'English', 'en': 'English'},
     // LoadingText
     'loading': {'zh': '调用中...', 'en': 'Calling...'},
+    // UsageLoadingText —— 用量查询中（首次无旧数据时用量框占位）
+    'usageLoading': {'zh': '用量查询中...', 'en': 'Loading usage...'},
     // ErrorMessageFormat —— 占位 {0}
     'errorMessage': {'zh': '错误，等待重试: {0}', 'en': 'Error, retrying: {0}'},
     // ApiUrlNotConfigured
-    'apiUrlNotConfigured': {'zh': 'API URL 未配置', 'en': 'API URL not configured'},
+    'apiUrlNotConfigured': {
+      'zh': 'API URL 未配置',
+      'en': 'API URL not configured',
+    },
     // ApiKeyNotConfigured
-    'apiKeyNotConfigured': {'zh': 'API Key 未配置', 'en': 'API Key not configured'},
+    'apiKeyNotConfigured': {
+      'zh': 'API Key 未配置',
+      'en': 'API Key not configured',
+    },
     // ApiCallFailedFormat —— 占位 {0}、{1}
     'apiCallFailed': {
       'zh': 'API 调用失败: {0} - {1}',
-      'en': 'API call failed: {0} - {1}'
+      'en': 'API call failed: {0} - {1}',
     },
     // WindowTitleFormat —— 占位 {0}、{1}
-    'windowTitle': {'zh': '{0}%已使用({1} Coding Plan)', 'en': '{0}% used ({1} Coding Plan)'},
+    'windowTitle': {
+      'zh': '{0}%已使用({1} Coding Plan)',
+      'en': '{0}% used ({1} Coding Plan)',
+    },
     // NextTriggerFormat —— 占位 {0:HH:mm}、{1}、{2}
     'nextTriggerFormat': {
       'zh': '下次触发大模型: {0:HH:mm} ({1}分{2}秒后)',
-      'en': 'Next trigger: {0:HH:mm} ({1}m{2}s)'
+      'en': 'Next trigger: {0:HH:mm} ({1}m{2}s)',
     },
     // ResetTextToday —— 占位 {0:HH:mm}
     'resetToday': {'zh': '重置 {0:HH:mm}', 'en': 'Reset {0:HH:mm}'},
     // ResetTextOther —— 占位 {0:MM/dd HH:mm}
-    'resetOther': {
-      'zh': '重置 {0:MM/dd HH:mm}',
-      'en': 'Reset {0:MM/dd HH:mm}'
-    },
+    'resetOther': {'zh': '重置 {0:MM/dd HH:mm}', 'en': 'Reset {0:MM/dd HH:mm}'},
     // JokePrompt
     'jokePrompt': {
       'zh': '说一个冷笑话，不要重复常见段子，尽量新颖。',
-      'en': 'Tell a corny joke, avoid repeating common jokes, and try to be original.'
+      'en':
+          'Tell a corny joke, avoid repeating common jokes, and try to be original.',
     },
     // ResultTimestampFormat —— 占位 {0:HH:mm:ss}
     'resultTimestamp': {
       'zh': '返回结果(最后调用于 {0:HH:mm:ss})',
-      'en': 'Result (last called at {0:HH:mm:ss})'
+      'en': 'Result (last called at {0:HH:mm:ss})',
     },
   };
 
@@ -97,7 +103,9 @@ class LocalizationService {
   /// - 其它：`'en'` → en，其它一律视为 zh。
   void initialize(String? saved) {
     if (saved == null || saved.isEmpty || saved == 'auto') {
-      current = Platform.localeName.toLowerCase().startsWith('en') ? 'en' : 'zh';
+      current = Platform.localeName.toLowerCase().startsWith('en')
+          ? 'en'
+          : 'zh';
     } else {
       current = saved == 'en' ? 'en' : 'zh';
     }
@@ -106,7 +114,9 @@ class LocalizationService {
   /// 切换语言，返回生效后的语言代码。`'auto'` 同 `initialize` 自动判定。
   String setLanguage(String code) {
     if (code == 'auto') {
-      current = Platform.localeName.toLowerCase().startsWith('en') ? 'en' : 'zh';
+      current = Platform.localeName.toLowerCase().startsWith('en')
+          ? 'en'
+          : 'zh';
     } else {
       current = code == 'en' ? 'en' : 'zh';
     }

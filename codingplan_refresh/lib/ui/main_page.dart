@@ -492,6 +492,9 @@ class _MainPageState extends State<MainPage> {
                       l10n: l,
                       resetText: _resetText,
                       displayName: p.name,
+                      // _usages[p.id]==null：从未查到过（首次查询中）→ loading 占位；
+                      // 非 null（有旧数据或错误）→ 显示旧内容，刷新查询无感。
+                      isLoading: _usages[p.id] == null,
                     ),
                   )
                   .toList(),

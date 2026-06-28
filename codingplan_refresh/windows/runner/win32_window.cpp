@@ -18,14 +18,6 @@ namespace {
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
-/// Registry key for app theme preference.
-///
-/// A value of 0 indicates apps should use dark mode. A non-zero or missing
-/// value indicates apps should use light mode.
-constexpr const wchar_t kGetPreferredBrightnessRegKey[] =
-  L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
-constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
-
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
 
@@ -97,7 +89,14 @@ const wchar_t* WindowClassRegistrar::GetWindowClass() {
     window_class.hInstance = GetModuleHandle(nullptr);
     window_class.hIcon =
         LoadIcon(window_class.hInstance, MAKEINTRESOURCE(IDI_APP_ICON));
-    window_class.hbrBackground = 0;
+    // 窗口类背景画刷设为应用深色（与 Scaffold 0xFF2D2D30 一致）。show 在 Flutter
+    // 首帧前发生（window_manager.setup），此时客户区未渲染，用此画刷填充避免白屏。
+    // DWM composition 接管标题栏绘制，此画刷不影响标题栏文字背景（故无黑块）。
+    // 用 static 一次性创建，应用退出由 OS 回收（与原 hbrBackground=0 的简洁一致）。
+    window_class.hbrBackground = []() -> HBRUSH {
+      static HBRUSH brush = CreateSolidBrush(RGB(45, 45, 48));
+      return brush;
+    }();
     window_class.lpszMenuName = nullptr;
     window_class.lpfnWndProc = Win32Window::WndProc;
     RegisterClass(&window_class);
@@ -273,16 +272,11 @@ void Win32Window::OnDestroy() {
 }
 
 void Win32Window::UpdateTheme(HWND const window) {
-  DWORD light_mode;
-  DWORD light_mode_size = sizeof(light_mode);
-  LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
-                               kGetPreferredBrightnessRegValue,
-                               RRF_RT_REG_DWORD, nullptr, &light_mode,
-                               &light_mode_size);
-
-  if (result == ERROR_SUCCESS) {
-    BOOL enable_dark_mode = light_mode == 0;
-    DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                          &enable_dark_mode, sizeof(enable_dark_mode));
-  }
+  // 应用始终深色主题：强制暗色标题栏（DWMWA_USE_IMMERSIVE_DARK_MODE=TRUE），
+  // 与客户区深色背景（0xFF2D2D30）统一。原实现读注册表 AppsUseLightTheme 跟随
+  // 系统，但客户区固定深色——系统亮色时标题栏白色与客户区割裂，且标题栏文字
+  // 背景在激活重绘时易出现深色块。强制暗色后标题栏整体深色、文字白色，无割裂。
+  BOOL enable_dark_mode = TRUE;
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &enable_dark_mode, sizeof(enable_dark_mode));
 }
