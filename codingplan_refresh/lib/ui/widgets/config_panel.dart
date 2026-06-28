@@ -80,6 +80,10 @@ class _ConfigPanelState extends State<ConfigPanel> {
       // 无界），故删 Spacer；ReorderableListView 仍放 SizedBox(height:140) 给固定高。
       child: SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // 语言切换放最上面（与模型配置无关，全局设置）。
+        Text(l.t('languageLabel'), style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 11)),
+        Row(children: [_langBtn(0, l.t('languageAuto')), _langBtn(1, l.t('languageZh')), _langBtn(2, l.t('languageEn'))]),
+        const Divider(color: Color(0xFF555555), height: 16),
         // provider 列表（可拖动）
         SizedBox(
           height: 140,
@@ -152,9 +156,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
           _field('API Key', _key, hint: 'sk-xxx', obscure: true),
           _field('Model', _model, hint: 'glm-5.1 / ep-xxx'),
         ],
-        const SizedBox(height: 6),
-        Text(l.t('languageLabel'), style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 11)),
-        Row(children: [_langBtn(0, l.t('languageAuto')), _langBtn(1, l.t('languageZh')), _langBtn(2, l.t('languageEn'))]),
+        const SizedBox(height: 16),
         Row(children: [
           Expanded(child: ElevatedButton(onPressed: _onSave, child: Text(l.t('save')))),
           const SizedBox(width: 8),
