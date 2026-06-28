@@ -95,7 +95,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
       padding: const EdgeInsets.all(12),
       // 整面板包 SingleChildScrollView：内容超高（多 provider + 表单 + 语言）时可滚
       // 到底部保存/取消按钮。注意 ScrollView 内 Column 不能用 Spacer/Expanded（主轴
-      // 无界），故删 Spacer；ReorderableListView 仍放 SizedBox(height:140) 给固定高。
+      // 无界），故删 Spacer；ReorderableListView 用 shrinkWrap + maxHeight(140) 自适应。
       child: SingleChildScrollView(
         child: Column(
           key: _contentKey,
@@ -106,6 +106,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
               l.t('languageLabel'),
               style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 11),
             ),
+            const SizedBox(height: 4),
             Row(
               children: [
                 _langBtn(0, l.t('languageAuto')),
@@ -114,10 +115,18 @@ class _ConfigPanelState extends State<ConfigPanel> {
               ],
             ),
             const Divider(color: Color(0xFF555555), height: 16),
-            // provider 列表（可拖动）
-            SizedBox(
-              height: 140,
+            // provider 列表（可拖动）：shrinkWrap 按实际内容高，ConstrainedBox
+            // maxHeight=140（≈2.5 个 item）限高——provider 少时紧凑不留空白，超过
+            // 2.5 个时按现有行为走滚动条。
+            Text(
+              '配置列表',
+              style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 11),
+            ),
+            const SizedBox(height: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 140),
               child: ReorderableListView(
+                shrinkWrap: true,
                 buildDefaultDragHandles: false,
                 onReorder: (oldI, newI) {
                   setState(() {
@@ -329,6 +338,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
           label,
           style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 11),
         ),
+        const SizedBox(height: 4),
         TextField(
           controller: c,
           obscureText: obscure,
