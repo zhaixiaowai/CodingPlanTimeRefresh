@@ -8,13 +8,18 @@ import '../../services/localization_service.dart';
 class UsageFrame extends StatelessWidget {
   final UsageResult result;
   final LocalizationService l10n;
-  final String Function(int? resetAtMs) resetText; // 由 main_page 注入（含本地化 + DateFormat）
+  final String Function(int? resetAtMs)
+  resetText; // 由 main_page 注入（含本地化 + DateFormat）
+  /// 优先显示的标题（用户在配置里输入的 ProviderConfig.name）；为空则 fallback
+  /// result.vendorTitle（查询返回的「智谱 Pro」等）。
+  final String? displayName;
 
   const UsageFrame({
     super.key,
     required this.result,
     required this.l10n,
     required this.resetText,
+    this.displayName,
   });
 
   static Color pctColor(double p) {
@@ -43,9 +48,14 @@ class UsageFrame extends StatelessWidget {
             ),
             child: result.items.isEmpty
                 ? Center(
-                    child: Text(result.errorMessage ?? '',
-                        style: const TextStyle(
-                            color: Color(0xFF999999), fontSize: 11)))
+                    child: Text(
+                      result.errorMessage ?? '',
+                      style: const TextStyle(
+                        color: Color(0xFF999999),
+                        fontSize: 11,
+                      ),
+                    ),
+                  )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: result.items.map((it) => _row(it)).toList(),
@@ -61,9 +71,15 @@ class UsageFrame extends StatelessWidget {
               child: Container(
                 color: const Color(0xFF2D2D30), // 遮住边框，形成 legend 缺口
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(result.vendorTitle,
-                    style: const TextStyle(
-                        color: Color(0xFFAAAAAA), fontSize: 11)),
+                child: Text(
+                  (displayName != null && displayName!.isNotEmpty)
+                      ? displayName!
+                      : result.vendorTitle,
+                  style: const TextStyle(
+                    color: Color(0xFFAAAAAA),
+                    fontSize: 11,
+                  ),
+                ),
               ),
             ),
           ),
@@ -77,21 +93,37 @@ class UsageFrame extends StatelessWidget {
     final reset = it.resetAtMs;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(children: [
-        SizedBox(
+      child: Row(
+        children: [
+          SizedBox(
             width: 80,
-            child: Text(l10n.t(it.labelKey),
-                style: const TextStyle(color: Color(0xFF888888), fontSize: 12))),
-        Expanded(
+            child: Text(
+              l10n.t(it.labelKey),
+              style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+            ),
+          ),
+          Expanded(
             child: Center(
-                child: Text(reset == null ? '' : resetText(reset),
-                    style: const TextStyle(color: Color(0xFF999999), fontSize: 11)))),
-        SizedBox(
+              child: Text(
+                reset == null ? '' : resetText(reset),
+                style: const TextStyle(color: Color(0xFF999999), fontSize: 11),
+              ),
+            ),
+          ),
+          SizedBox(
             width: 50,
-            child: Text('${pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1)}%',
-                textAlign: TextAlign.right,
-                style: TextStyle(color: pctColor(pct), fontSize: 16, fontWeight: FontWeight.bold))),
-      ]),
+            child: Text(
+              '${pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1)}%',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: pctColor(pct),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

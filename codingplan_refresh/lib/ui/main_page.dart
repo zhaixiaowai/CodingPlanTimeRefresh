@@ -71,6 +71,12 @@ class _MainPageState extends State<MainPage> {
   bool _enlarged = false;
   String? _enlargedMode;
 
+  /// 放大态客户区尺寸：宽度固定 420（设置/结果面板统一）；高度初始 520，
+  /// config 模式随后按 ConfigPanel 实际内容高收缩（消除底部空白），trigger 保持 520。
+  static const double _enlargedW = 420;
+  static const double _enlargedInitH = 520;
+  double _lastEnlargedH = 0; // config 模式上次收缩高，>2px 阈值防抖动
+
   @override
   void initState() {
     super.initState();
@@ -78,11 +84,15 @@ class _MainPageState extends State<MainPage> {
     for (final p in _config.providers) {
       _results[p.id] = ResultState();
     }
-    _usageTimer =
-        Timer.periodic(const Duration(seconds: 60), (_) => _queryAllUsage());
+    _usageTimer = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => _queryAllUsage(),
+    );
     _queryAllUsage();
-    _triggerTimer =
-        Timer.periodic(const Duration(seconds: 6), (_) => _onTriggerTick());
+    _triggerTimer = Timer.periodic(
+      const Duration(seconds: 6),
+      (_) => _onTriggerTick(),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
   }
 
@@ -112,8 +122,7 @@ class _MainPageState extends State<MainPage> {
     for (final p in _config.providers) {
       final provider = _providerFor(p);
       if (provider == null) {
-        _usages[p.id] =
-            const UsageResult('未知厂商', [], '未知厂商，不支持用量查询');
+        _usages[p.id] = const UsageResult('未知厂商', [], '未知厂商，不支持用量查询');
         continue;
       }
       final result = await provider.query();
@@ -144,7 +153,11 @@ class _MainPageState extends State<MainPage> {
       if (h5 != null) parts.add('$h5');
       if (weekly != null) parts.add('$weekly');
       if (parts.isEmpty) continue;
-      final vendor = u.vendorTitle.split(' ').first;
+      // 厂商名优先用用户输入的 ProviderConfig.name；为空（未填）才 fallback 到查询
+      // 返回的 vendorTitle 取空格前部分（如「智谱 Pro」→「智谱」），保留旧逻辑。
+      final vendor = p.name.isNotEmpty
+          ? p.name
+          : u.vendorTitle.split(' ').first;
       groups.add('$vendor：${parts.join('/')}');
     }
     return groups.isEmpty ? 'Coding Plan Time Refresh' : groups.join(' ');
@@ -173,7 +186,10 @@ class _MainPageState extends State<MainPage> {
   /// 6 秒轮询：命中触发时段（01/07/13/19 点整）且本轮未触发 → 遍历所有
   /// providers 各自调用（per-provider 重试，互不阻塞）。
   void _onTriggerTick() {
-    final r = SchedulerService.checkTrigger(DateTime.now(), _globalTriggerKey());
+    final r = SchedulerService.checkTrigger(
+      DateTime.now(),
+      _globalTriggerKey(),
+    );
     if (!r.trigger) return;
     _setGlobalTriggerKey(r.key);
     widget.configService.save(_config);
@@ -195,8 +211,8 @@ class _MainPageState extends State<MainPage> {
     // provider（原 orElse 回退到 first 会拿错配置调 LLM）调 LLM。
     final p = _config.providers.firstWhere(
       (e) => e.id == providerId,
-      orElse: () => ProviderConfig(
-          id: '', name: '', apiUrl: '', apiKey: '', model: ''),
+      orElse: () =>
+          ProviderConfig(id: '', name: '', apiUrl: '', apiKey: '', model: ''),
     );
     if (p.id.isEmpty) return false;
     final rs = _results[providerId];
@@ -271,8 +287,11 @@ class _MainPageState extends State<MainPage> {
   /// 先 await enlarge（窗口先放大），再 setState 切放大态布局——避免放大态布局在
   /// 旧 mini 尺寸窗口渲染一帧被裁剪。enlarge 内会先平移到屏内再 setSize。
   Future<void> _openEnlarged(String mode) async {
-    await widget.window.enlarge(w: 420, h: 520);
+    await widget.window.enlarge(w: _enlargedW, h: _enlargedInitH);
     if (!mounted) return;
+    // 重置阈值：新打开必然与 0 差异>2px，确保 config 首帧收缩生效（即便内容高
+    // 与上次关闭时相同也会重新设一次，避免残留 _lastEnlargedH 导致不收缩）。
+    _lastEnlargedH = 0;
     setState(() {
       _enlarged = true;
       _enlargedMode = mode;
@@ -292,6 +311,16 @@ class _MainPageState extends State<MainPage> {
     await widget.window.shrinkToContent(_lastContentHeight);
     if (mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
+    }
+  }
+
+  /// ConfigPanel 内容高度变化回调：放大态 config 模式据此把窗口收缩到实际内容高，
+  /// 消除固定 520 的底部空白。>2px 阈值防抖动；非 config 模式忽略（trigger 保持 520）。
+  void _onConfigHeight(double h) {
+    if (!_enlarged || _enlargedMode != 'config') return;
+    if ((h - _lastEnlargedH).abs() > 2) {
+      _lastEnlargedH = h;
+      widget.window.setHeight(_enlargedW, h);
     }
   }
 
@@ -354,9 +383,8 @@ class _MainPageState extends State<MainPage> {
     if (ms == null || ms < 0) return '';
     final dt = DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
     final now = DateTime.now();
-    final isToday = dt.year == now.year &&
-        dt.month == now.month &&
-        dt.day == now.day;
+    final isToday =
+        dt.year == now.year && dt.month == now.month && dt.day == now.day;
     // 复合格式（resetToday/resetOther）的占位符 {0:HH:mm} / {0:MM/dd HH:mm} 由
     // FmtString.fmt 内部按 DateTime 参数渲染，此处无需单独构造 DateFormat。
     return widget.l10n.t(isToday ? 'resetToday' : 'resetOther').fmt([dt]);
@@ -398,7 +426,9 @@ class _MainPageState extends State<MainPage> {
               itemBuilder: (_) => [
                 PopupMenuItem(value: 'config', child: Text(l.t('settings'))),
                 PopupMenuItem(
-                    value: 'trigger', child: Text(l.t('manualTrigger'))),
+                  value: 'trigger',
+                  child: Text(l.t('manualTrigger')),
+                ),
               ],
             ),
             const Spacer(),
@@ -415,8 +445,10 @@ class _MainPageState extends State<MainPage> {
                 },
               ),
             ),
-            Text(l.t('pinLabel'),
-                style: const TextStyle(color: Colors.white, fontSize: 11)),
+            Text(
+              l.t('pinLabel'),
+              style: const TextStyle(color: Colors.white, fontSize: 11),
+            ),
             const SizedBox(width: 4),
           ],
         ),
@@ -443,12 +475,14 @@ class _MainPageState extends State<MainPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: _config.providers
-                  .map((p) => UsageFrame(
-                        result: _usages[p.id] ??
-                            const UsageResult('', [], null),
-                        l10n: l,
-                        resetText: _resetText,
-                      ))
+                  .map(
+                    (p) => UsageFrame(
+                      result: _usages[p.id] ?? const UsageResult('', [], null),
+                      l10n: l,
+                      resetText: _resetText,
+                      displayName: p.name,
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -466,6 +500,7 @@ class _MainPageState extends State<MainPage> {
             l10n: widget.l10n,
             onSave: _onConfigSaved,
             onCancel: _closeEnlarged,
+            onHeightChanged: _onConfigHeight,
           )
         : ResultPanel(
             providers: _config.providers,
