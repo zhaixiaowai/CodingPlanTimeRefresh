@@ -78,24 +78,23 @@ class WindowController {
   }
 
   Future<Size> _frameOffset() async {
-    if (_cachedFrameOffset != null) return _cachedFrameOffset!;
+    // 不缓存：每次重新测量（窗口 style 不变，但首帧测量可能因 setSize 未同步而偏小，
+    // 不缓存可让后续测量自校正）。测到异常（负值/过大）用缓存或退化值。
     try {
       final frame = await windowManager.getSize(); // 外框逻辑像素
       final view = WidgetsBinding.instance.platformDispatcher.views.first;
       final client = view.physicalSize / view.devicePixelRatio; // 客户区逻辑像素
       final dx = frame.width - client.width;
       final dy = frame.height - client.height;
-      // 客户区可能因刚 setSize 还没同步而偏小，dx/dy 应 ≥0（标题栏+边框）。
-      // 若测到负值（同步异常），退化用 Windows 标准补偿（16/40）。
+      // dx/dy 应 ≥0（标题栏+边框）。若负值（同步异常），用上次缓存或退化。
       if (dx < 0 || dy < 0) {
-        _cachedFrameOffset = const Size(16, 40);
-      } else {
-        _cachedFrameOffset = Size(dx, dy);
+        return _cachedFrameOffset ?? const Size(16, 40);
       }
+      _cachedFrameOffset = Size(dx, dy);
+      return _cachedFrameOffset!;
     } catch (_) {
-      _cachedFrameOffset = const Size(16, 40);
+      return _cachedFrameOffset ?? const Size(16, 40);
     }
-    return _cachedFrameOffset!;
   }
 
   /// 放大到目标尺寸，若超出屏幕工作区则平移窗口留在屏内。

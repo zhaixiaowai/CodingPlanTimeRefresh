@@ -25,37 +25,51 @@ class UsageFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(clipBehavior: Clip.none, children: [
-      // 框（带边框 + 最小高度）
-      Container(
-        constraints: const BoxConstraints(minHeight: 28),
-        margin: const EdgeInsets.fromLTRB(0, 8, 0, 4),
-        padding: const EdgeInsets.fromLTRB(8, 14, 8, 6),
-        decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFF555555)),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: result.items.isEmpty
-            ? Center(
-                child: Text(result.errorMessage ?? '',
-                    style: const TextStyle(color: Color(0xFF999999), fontSize: 11)))
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: result.items.map((it) => _row(it)).toList(),
+    // legend 标题压在框上边线：用 Padding(top) 给 legend 让出空间（参与 size 计算，
+    // 避免 Positioned 溢出 Stack 导致父级量高漏算 legend 区→滚动条）。
+    // legend 用 Transform.translate 上移压在框上边线，视觉同 fieldset legend。
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // 框（带边框 + 最小高度）
+          Container(
+            constraints: const BoxConstraints(minHeight: 28),
+            padding: const EdgeInsets.fromLTRB(8, 14, 8, 6),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFF555555)),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: result.items.isEmpty
+                ? Center(
+                    child: Text(result.errorMessage ?? '',
+                        style: const TextStyle(
+                            color: Color(0xFF999999), fontSize: 11)))
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: result.items.map((it) => _row(it)).toList(),
+                  ),
+          ),
+          // legend 标题：translate 上移压在框上边线（不溢出 Stack 的 size 计算外，
+          // 因 Padding top 已预留其高度）
+          Positioned(
+            left: 10,
+            top: 0,
+            child: Transform.translate(
+              offset: const Offset(0, -7),
+              child: Container(
+                color: const Color(0xFF2D2D30), // 遮住边框，形成 legend 缺口
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(result.vendorTitle,
+                    style: const TextStyle(
+                        color: Color(0xFFAAAAAA), fontSize: 11)),
               ),
+            ),
+          ),
+        ],
       ),
-      // legend 标题（压在上边线）
-      Positioned(
-        left: 10,
-        top: 0,
-        child: Container(
-          color: const Color(0xFF2D2D30), // 遮住边框，形成 legend 缺口
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(result.vendorTitle,
-              style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 11)),
-        ),
-      ),
-    ]);
+    );
   }
 
   Widget _row(UsageItem it) {
