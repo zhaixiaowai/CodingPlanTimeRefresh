@@ -126,10 +126,12 @@ class _MainPageState extends State<MainPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
   }
 
-  /// 拼接窗口标题：按 _config.providers 顺序，每个 provider 取 5h + 周 百分比。
-  /// - 单 provider 有 5h+周：`30/70`；只有 5h：`30`；无 5h：空串。
-  /// - 多 provider：`30/70 | 45/80`（各 provider 组用 | 连）。
-  /// 百分比四舍五入为整数。失败的 provider（errorMessage 非 null）跳过。
+  /// 拼接窗口标题：按 _config.providers 顺序，每个 provider 一组
+  /// `{厂商}{套餐}:{5h}/{周}`，多 provider 用空格连。
+  /// - vendorTitle 已含厂商+套餐（如「智谱 Pro」「火山方舟 Pro」）。
+  /// - 有 5h+周：`0/100`；只有 5h：`0`；只周：`100`。
+  /// 百分比四舍五入为整数；失败的 provider（errorMessage 非 null）跳过。
+  /// 全部无用量时返回应用名兜底。
   String _buildWindowTitle() {
     final groups = <String>[];
     for (final p in _config.providers) {
@@ -142,9 +144,9 @@ class _MainPageState extends State<MainPage> {
       if (h5 != null) parts.add('$h5');
       if (weekly != null) parts.add('$weekly');
       if (parts.isEmpty) continue;
-      groups.add(parts.join('/'));
+      groups.add('${u.vendorTitle}:${parts.join('/')}');
     }
-    return groups.join(' | ');
+    return groups.isEmpty ? 'Coding Plan Time Refresh' : groups.join(' ');
   }
 
   /// 从 UsageResult 取指定 labelKey 的百分比（四舍五入整数），无则 null。
