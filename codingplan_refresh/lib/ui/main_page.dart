@@ -118,19 +118,30 @@ class _MainPageState extends State<MainPage> {
     return null;
   }
 
+  /// 并行查询所有 provider 用量：每个 provider 起独立 async 查询（智谱 HTTP +
+  /// 火山方舟 arkcli 子进程同时进行），先返回的先 setState 显示——总耗时 ≈ 最慢
+  /// 的那个，而非串行相加（旧 for+await 是 A 完才 B，两个都几秒时翻倍）。
+  /// 全是 async IO（http.get / Process.start），不阻塞主 isolate，UI 不卡。
+  /// 全部完成后统一更新窗口标题 + 排高度自适应。
   Future<void> _queryAllUsage() async {
+    final futures = <Future<void>>[];
     for (final p in _config.providers) {
       final provider = _providerFor(p);
       if (provider == null) {
+        // 未知厂商：同步置错误结果，无需 async。
         _usages[p.id] = const UsageResult('未知厂商', [], '未知厂商，不支持用量查询');
         continue;
       }
-      final result = await provider.query();
-      if (!mounted) return;
-      setState(() => _usages[p.id] = result);
+      // 立即启动（IIFE）并行查询；每个完成即 setState 显示，先到先显。
+      futures.add(() async {
+        final result = await provider.query();
+        if (!mounted) return;
+        setState(() => _usages[p.id] = result);
+      }());
     }
+    await Future.wait(futures);
     if (!mounted) return;
-    // 更新窗口标题：每 provider 一组「5h%/周%」，多 provider 用 | 连接。
+    // 更新窗口标题：每 provider 一组「5h%/周%」，多 provider 用空格连。
     await widget.window.setTitle(_buildWindowTitle());
     WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
   }

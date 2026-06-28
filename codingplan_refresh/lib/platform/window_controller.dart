@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:ui' show Offset, Size;
+import 'dart:ui' show Color, Offset, Size;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:window_manager/window_manager.dart';
 
@@ -24,20 +24,27 @@ class WindowController {
     await windowManager.ensureInitialized();
     // 不能用 `const WindowOptions(...)`——size/minimumSize 依赖运行时入参
     // width/height，const 上下文会编译失败。这里走普通构造。
-    await windowManager.waitUntilReadyToShow(WindowOptions(
-      size: Size(width, height),
-      minimumSize: Size(width, 80),
-      center: true,
-      titleBarStyle: TitleBarStyle.normal,
-    ), () async {
-      await windowManager.show();
-      await windowManager.focus();
-      await windowManager.setResizable(false);
-      // 平移旧 MAUI `IsMaximizable=false`（禁最大化按钮，亦拦截标题栏双击最大化）。
-      await windowManager.setMaximizable(false);
-      await windowManager.setAlwaysOnTop(alwaysOnTop);
-      await windowManager.setSize(Size(width, height));
-    });
+    await windowManager.waitUntilReadyToShow(
+      WindowOptions(
+        size: Size(width, height),
+        minimumSize: Size(width, 80),
+        center: true,
+        titleBarStyle: TitleBarStyle.normal,
+      ),
+      () async {
+        // 消除启动白屏：show 在 runApp 前调用，窗口已可见但 Flutter 首帧未渲染，
+        // 默认白底会闪一下。先把窗口背景设为主题深色（与 Scaffold 一致），show 后
+        // 到首帧之间显示深色而非白屏，视觉上无突变。
+        await windowManager.setBackgroundColor(const Color(0xFF2D2D30));
+        await windowManager.show();
+        await windowManager.focus();
+        await windowManager.setResizable(false);
+        // 平移旧 MAUI `IsMaximizable=false`（禁最大化按钮，亦拦截标题栏双击最大化）。
+        await windowManager.setMaximizable(false);
+        await windowManager.setAlwaysOnTop(alwaysOnTop);
+        await windowManager.setSize(Size(width, height));
+      },
+    );
   }
 
   Future<void> setAlwaysOnTop(bool v) => windowManager.setAlwaysOnTop(v);
