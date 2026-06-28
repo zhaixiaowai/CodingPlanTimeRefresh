@@ -387,35 +387,34 @@ class _MainPageState extends State<MainPage> {
   }
 
   /// mini 态：顶部栏（☰+置顶）+ 每 provider 一个 UsageFrame。
-  /// 整体放进 SingleChildScrollView：内容超高可滚；高度自适应时量内层 Column
-  /// 的完整渲染高（topBar + 各框，Column 在 unbounded 约束下按 intrinsic 撑开，
-  /// 不受 viewport 干扰），含置顶行，避免漏算顶部。
+  /// 不用 ScrollView——窗口高度自适应（setHeight=内容高+补偿），内容永远≤窗口，
+  /// 无需滚动。直接 Column，量其完整渲染高作为窗口内容高，避免 ScrollView 的
+  /// viewport 约束干扰测量（曾导致量到的 contentH 偏小、却仍出滚动条）。
   Widget _buildMini() {
     final l = widget.l10n;
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
-        child: Column(
-          key: _contentKey,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildTopBar(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: _config.providers
-                    .map((p) => UsageFrame(
-                          result: _usages[p.id] ??
-                              const UsageResult('', [], null),
-                          l10n: l,
-                          resetText: _resetText,
-                        ))
-                    .toList(),
-              ),
+    return Padding(
+      key: _contentKey,
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildTopBar(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: _config.providers
+                  .map((p) => UsageFrame(
+                        result: _usages[p.id] ??
+                            const UsageResult('', [], null),
+                        l10n: l,
+                        resetText: _resetText,
+                      ))
+                  .toList(),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
