@@ -28,6 +28,8 @@ class FakeWindowController extends WindowController {
   int setAlwaysOnTopCalls = 0;
   int enlargeCalls = 0;
   int shrinkCalls = 0;
+  int forcedActiveCalls = 0;
+  List<bool> forcedValues = [];
 
   @override
   Future<void> setup({
@@ -60,6 +62,12 @@ class FakeWindowController extends WindowController {
   Future<void> setAlwaysOnTop(bool v) async {
     alwaysOnTop = v;
     setAlwaysOnTopCalls++;
+  }
+
+  @override
+  Future<void> setOpacityForcedActive(bool forced) async {
+    forcedActiveCalls++;
+    forcedValues.add(forced);
   }
 
   @override
@@ -318,5 +326,32 @@ void main() {
     expect(window.lastHeight, greaterThan(50));
     // 宽度固定 280。
     expect(window.lastWidth, 280);
+  });
+
+  // ===== T8 放大态强制全显接线 =====
+
+  testWidgets('打开放大态 → setOpacityForcedActive(true)，关闭 → false', (
+    tester,
+  ) async {
+    final window = FakeWindowController();
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [
+            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+          ],
+        ),
+        window: window,
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+    // 打开放大态 → 强制全显。
+    expect(window.forcedValues, contains(true));
+    // 关闭（取消）→ 恢复按焦点。
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(window.forcedValues, contains(false));
   });
 }

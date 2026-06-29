@@ -203,6 +203,7 @@ class _MainPageState extends State<MainPage> {
     final r = SchedulerService.checkTrigger(
       DateTime.now(),
       _globalTriggerKey(),
+      _config.triggerHours,
     );
     if (!r.trigger) return;
     _setGlobalTriggerKey(r.key);
@@ -218,6 +219,7 @@ class _MainPageState extends State<MainPage> {
     final next = SchedulerService.nextTrigger(
       DateTime.now(),
       _globalTriggerKey(),
+      _config.triggerHours,
     );
     if (next == null) {
       if (_nextTriggerText.isNotEmpty) {
@@ -327,6 +329,8 @@ class _MainPageState extends State<MainPage> {
   Future<void> _openEnlarged(String mode) async {
     await widget.window.enlarge(w: _enlargedW, h: _enlargedInitH);
     if (!mounted) return;
+    // 放大态必须看清内容 → 强制全显（覆盖失焦半透），关闭时恢复按焦点。
+    await widget.window.setOpacityForcedActive(true);
     // 重置阈值：新打开必然与 0 差异>2px，确保 config 首帧收缩生效（即便内容高
     // 与上次关闭时相同也会重新设一次，避免残留 _lastEnlargedH 导致不收缩）。
     _lastEnlargedH = 0;
@@ -347,6 +351,8 @@ class _MainPageState extends State<MainPage> {
       _enlargedMode = null;
     });
     await widget.window.shrinkToContent(_lastContentHeight);
+    // 关闭放大态：解除强制全显，恢复按焦点判定透明度。
+    await widget.window.setOpacityForcedActive(false);
     if (mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
     }
