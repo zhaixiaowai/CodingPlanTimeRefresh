@@ -6,13 +6,20 @@ import 'package:codingplan_refresh/services/usage_provider.dart';
 
 /// 火山方舟用量：通过本地 arkcli 子进程查询 `arkcli usage plan`，10s 超时。
 /// runner 抽象便于测试注入（生产用默认 _realRunner 调 Process.start，超时 kill 子进程）。
-typedef ArkRunner = Future<String> Function({required List<String> args, required Duration timeout});
+typedef ArkRunner =
+    Future<String> Function({
+      required List<String> args,
+      required Duration timeout,
+    });
 
 class VolcArkUsageProvider implements UsageProvider {
   final ArkRunner runner;
   VolcArkUsageProvider({ArkRunner? runner}) : runner = runner ?? _realRunner;
 
-  static Future<String> _realRunner({required List<String> args, required Duration timeout}) async {
+  static Future<String> _realRunner({
+    required List<String> args,
+    required Duration timeout,
+  }) async {
     // Windows 上 arkcli 是 .cmd；走 runInShell 让 shell 解析。
     // 用 Process.start 而非 Process.run，以便超时时 process.kill 真正杀子进程（Process.run 无句柄，超时会留僵尸 arkcli）。
     //
@@ -23,14 +30,17 @@ class VolcArkUsageProvider implements UsageProvider {
     // 下线前评估平台插件方案（如 process_group / windows_task_scheduler）。
     final proc = await Process.start('arkcli', args, runInShell: true);
     try {
-      final stdout = await proc.stdout.transform(utf8.decoder).join().timeout(
-        timeout,
-        onTimeout: () {
-          // 见上文局限说明：仅杀 shell，arkcli node 子进程可能成孤儿。
-          proc.kill(ProcessSignal.sigkill);
-          throw TimeoutException('arkcli timeout', timeout);
-        },
-      );
+      final stdout = await proc.stdout
+          .transform(utf8.decoder)
+          .join()
+          .timeout(
+            timeout,
+            onTimeout: () {
+              // 见上文局限说明：仅杀 shell，arkcli node 子进程可能成孤儿。
+              proc.kill(ProcessSignal.sigkill);
+              throw TimeoutException('arkcli timeout', timeout);
+            },
+          );
       final exitCode = await proc.exitCode;
       if (exitCode != 0) {
         // 进程失败（含超时杀掉）：stderr 当失败描述
@@ -48,9 +58,10 @@ class VolcArkUsageProvider implements UsageProvider {
   @override
   Future<UsageResult> query() async {
     // 1) 用量百分比：arkcli usage plan。
-    //    若返回 refresh_token invalid（arkcli 的 STS 临时凭证未落地），延迟 1s 重试一次。
-    final first = await _runSafe(['usage', 'plan']);
-    final usageStdout = await _maybeRetryOnRefreshToken(first, ['usage', 'plan']);
+    //    若返回 refresh_token invalid（arkcli 登录凭证过期），直接当作错误返回并提示
+    //    用户重新 arkcli auth login（详见 README），不再自动重试——token 真过期时
+    //    重试无效，反而让用量查询多等 1s。由 _parseUsage 把该错误转成友好提示。
+    final usageStdout = await _runSafe(['usage', 'plan']);
     if (usageStdout.isError) {
       return UsageResult('火山方舟', [], usageStdout.error!);
     }
@@ -65,37 +76,13 @@ class VolcArkUsageProvider implements UsageProvider {
     return UsageResult(title, parsed.items, parsed.errorMessage);
   }
 
-  /// 若调用结果含 refresh_token invalid 错误，延迟 1s 重试一次（arkcli 的 STS
-  /// 临时凭证偶发未落地，重试通常即恢复）。否则原样返回。
-  Future<_RunResult> _maybeRetryOnRefreshToken(
-      _RunResult first, List<String> args) async {
-    final errText = first.isError
-        ? first.error!
-        : _extractError(first.value ?? '');
-    if (!errText.contains('The request parameter refresh_token is invalid')) {
-      return first;
-    }
-    await Future.delayed(const Duration(seconds: 1));
-    return _runSafe(args);
-  }
-
-  /// 从 usage plan stdout 提取 ok:false 的 error.message（用于判 refresh_token 错误）。
-  String _extractError(String stdout) {
-    try {
-      final doc = jsonDecode(stdout) as Map<String, dynamic>;
-      if (doc['ok'] == false) {
-        final err = doc['error'];
-        if (err is Map) return err['message'] as String? ?? '';
-      }
-    } catch (_) {}
-    return '';
-  }
-
   /// 调用 arkcli 子命令，统一处理异常 → (error 不为 null 即失败)。
   Future<_RunResult> _runSafe(List<String> args) async {
     try {
-      final stdout =
-          await runner(args: args, timeout: const Duration(seconds: 10));
+      final stdout = await runner(
+        args: args,
+        timeout: const Duration(seconds: 10),
+      );
       return _RunResult(stdout);
     } on ProcessException catch (e) {
       final msg = e.message;
@@ -146,7 +133,14 @@ class VolcArkUsageProvider implements UsageProvider {
       final doc = jsonDecode(stdout) as Map<String, dynamic>;
       if (doc['ok'] == false) {
         final err = doc['error'];
-        final msg = err is Map ? (err['message'] as String? ?? '查询失败，未找到数据') : '查询失败，未找到数据';
+        var msg = err is Map ? (err['message'] as String? ?? '') : '';
+        // refresh_token 失效（arkcli 登录凭证过期，常因长时间未用 arkcli）：转友好
+        // 提示指引用户重新登录，而非显示原始英文错误。详见 README「登录凭证过期」。
+        if (msg.contains('The request parameter refresh_token is invalid')) {
+          msg = '登录凭证已过期，请重新执行 arkcli auth login';
+        } else if (msg.isEmpty) {
+          msg = '查询失败，未找到数据';
+        }
         return _ParsedUsage('火山方舟', '', const [], msg);
       }
       final items = doc['items'] as List;
@@ -172,7 +166,9 @@ class VolcArkUsageProvider implements UsageProvider {
           'monthly': 'tokenMonthly',
         }[label];
         if (key == null) continue;
-        usageItems.add(UsageItem(key, percent.toDouble(), resetAt is int ? resetAt : null));
+        usageItems.add(
+          UsageItem(key, percent.toDouble(), resetAt is int ? resetAt : null),
+        );
       }
       if (usageItems.isEmpty) {
         return _ParsedUsage(title, edition, const [], '查询失败，未找到数据');
