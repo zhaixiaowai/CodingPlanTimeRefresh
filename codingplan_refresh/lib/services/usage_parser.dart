@@ -8,17 +8,17 @@ import 'package:codingplan_refresh/models/usage_info.dart';
 /// - type=TIME_LIMIT → mcpMonthly（mcp 月度）
 /// - type=TOKENS_LIMIT 且 unit=3 number=5 → token5h（5 小时）
 /// - 其余 TOKENS_LIMIT → tokenWeekly（周）
-/// 失败/无数据 → UsageResult('智谱', [], '查询失败，未找到数据')。
+/// 失败/无数据 → UsageResult('智谱', [], 'queryFailed')。
 UsageResult parseBigmodelUsage(String jsonBody, {String vendorTitle = '智谱'}) {
   try {
     final doc = jsonDecode(jsonBody) as Map<String, dynamic>;
     final data = doc['data'];
     if (data is! Map<String, dynamic>) {
-      return const UsageResult('智谱', [], '查询失败，未找到数据');
+      return const UsageResult('智谱', [], 'queryFailed');
     }
     final limits = data['limits'];
     if (limits is! List) {
-      return const UsageResult('智谱', [], '查询失败，未找到数据');
+      return const UsageResult('智谱', [], 'queryFailed');
     }
 
     final level = data['level'] as String?;
@@ -55,14 +55,13 @@ UsageResult parseBigmodelUsage(String jsonBody, {String vendorTitle = '智谱'})
         UsageItem('token5h', hour5Pct.toDouble(), hour5Reset),
       if (weeklyPct != null)
         UsageItem('tokenWeekly', weeklyPct.toDouble(), weeklyReset),
-      if (mcpPct != null)
-        UsageItem('mcpMonthly', mcpPct.toDouble(), mcpReset),
+      if (mcpPct != null) UsageItem('mcpMonthly', mcpPct.toDouble(), mcpReset),
     ];
     if (items.isEmpty) {
-      return UsageResult(title, [], '查询失败，未找到数据');
+      return UsageResult(title, [], 'queryFailed');
     }
     return UsageResult(title, items, null);
   } catch (_) {
-    return const UsageResult('智谱', [], '查询失败，未找到数据');
+    return const UsageResult('智谱', [], 'queryFailed');
   }
 }

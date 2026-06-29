@@ -28,16 +28,6 @@ void main() {
     expect(c.lastOpacity, WindowController.inactiveOpacity);
   });
 
-  test('onFocusedChanged 回调被触发', () {
-    final c = _FakeCtrl();
-    bool? got;
-    c.onFocusedChanged = (f) => got = f;
-    c.onWindowFocus();
-    expect(got, isTrue);
-    c.onWindowBlur();
-    expect(got, isFalse);
-  });
-
   test('setOpacityForcedActive(true) → 强制全显，即使 onWindowBlur 后仍 1.0', () async {
     final c = _FakeCtrl();
     await c.setOpacityForcedActive(true);
@@ -61,13 +51,21 @@ void main() {
   });
 
   test('opacityFor 纯函数：focused 优先，forcedActive 覆盖失焦', () {
-    expect(WindowController.opacityFor(focused: true, forcedActive: false),
-        WindowController.activeOpacity);
-    expect(WindowController.opacityFor(focused: false, forcedActive: false),
-        WindowController.inactiveOpacity);
-    expect(WindowController.opacityFor(focused: false, forcedActive: true),
-        WindowController.activeOpacity);
-    expect(WindowController.opacityFor(focused: true, forcedActive: true),
-        WindowController.activeOpacity);
+    expect(
+      WindowController.opacityFor(focused: true, forcedActive: false),
+      WindowController.activeOpacity,
+    );
+    expect(
+      WindowController.opacityFor(focused: false, forcedActive: false),
+      WindowController.inactiveOpacity,
+    );
+    expect(
+      WindowController.opacityFor(focused: false, forcedActive: true),
+      WindowController.activeOpacity,
+    );
+    expect(
+      WindowController.opacityFor(focused: true, forcedActive: true),
+      WindowController.activeOpacity,
+    );
   });
 }

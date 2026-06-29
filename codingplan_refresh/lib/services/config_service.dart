@@ -8,12 +8,10 @@ class ConfigService {
   static const double expandedWidth = 260;
   static const double expandedHeight = 318;
 
-  /// 按语言返回 mini 窗口宽度。中文 label/reset 文本短（5H/周/月、重置 06/27 09:05），
-  /// 可更窄；英文 Week/Month、Reset MM/dd HH:mm 较长需更宽。语言切换后窗口宽度随之变。
-  /// [lang] 为 'zh'/'en'，其它（auto 解析前）回退 expandedWidth。
-  static double widthForLanguage(String? lang) {
-    return lang == 'zh' ? 230 : expandedWidth;
-  }
+  /// mini 窗口宽度（统一英文版宽度 expandedWidth=260）。曾按语言区分（中文 230 /
+  /// 英文 260），但中文 230 过窄致标题栏拖动区不足，故统一用英文版宽度。
+  /// [lang] 保留参数以兼容现有调用点，实际不再按语言区分。
+  static double widthForLanguage(String? lang) => expandedWidth;
   static const double collapsedHeight = 120;
   static const double collapsedHeightWithWeekly = 142;
 

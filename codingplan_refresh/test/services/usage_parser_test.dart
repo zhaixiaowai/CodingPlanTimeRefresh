@@ -38,20 +38,20 @@ void main() {
 
   test('缺 data → errorMessage，items 为空', () {
     final r = parseBigmodelUsage('{"msg":"x"}');
-    expect(r.errorMessage, '查询失败，未找到数据');
+    expect(r.errorMessage, 'queryFailed');
     expect(r.items, isEmpty);
     expect(r.vendorTitle, '智谱');
   });
 
   test('data.limits 非列表 → errorMessage', () {
     final r = parseBigmodelUsage('{"data":{"level":"vip","limits":{}}}');
-    expect(r.errorMessage, '查询失败，未找到数据');
+    expect(r.errorMessage, 'queryFailed');
     expect(r.items, isEmpty);
   });
 
   test('limits 为空列表 → 无可用项 → errorMessage', () {
     final r = parseBigmodelUsage('{"data":{"level":"vip","limits":[]}}');
-    expect(r.errorMessage, '查询失败，未找到数据');
+    expect(r.errorMessage, 'queryFailed');
     expect(r.items, isEmpty);
   });
 
@@ -67,7 +67,7 @@ void main() {
 
   test('坏 JSON → errorMessage（不抛异常）', () {
     final r = parseBigmodelUsage('{坏');
-    expect(r.errorMessage, '查询失败，未找到数据');
+    expect(r.errorMessage, 'queryFailed');
     expect(r.items, isEmpty);
   });
 }

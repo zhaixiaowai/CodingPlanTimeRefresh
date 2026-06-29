@@ -97,4 +97,15 @@ void main() {
     final c = AppConfig.fromJson(legacy);
     expect(c.triggerHours, [1, 7, 13, 19]);
   });
+
+  test('triggerHours 越界值（0-23 外）被过滤，防 checkTrigger 永不命中', () {
+    final c = AppConfig(
+      providers: [ProviderConfig(id: 'a', name: 'x')],
+      triggerHours: [1, 7, 25, -1, 13, 19],
+    );
+    final loaded = AppConfig.fromJson(c.toJson());
+    // 25 与 -1 被过滤（否则 nextTrigger 靠 DateTime 规范化显示「01:00」但
+    // checkTrigger 的 now.hour==25 永不命中，保活静默失效）。
+    expect(loaded.triggerHours, [1, 7, 13, 19]);
+  });
 }

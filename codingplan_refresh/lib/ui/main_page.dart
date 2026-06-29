@@ -67,7 +67,6 @@ class _MainPageState extends State<MainPage> {
 
   // 放大态：true 时窗口为 420×520，放大区固定显示 ConfigPanel（手动触发已删）。
   bool _enlarged = false;
-  String? _enlargedMode;
 
   /// 放大态客户区尺寸：宽度固定 420；高度初始 520，随后按 ConfigPanel 实际内容高
   /// 收缩（消除底部空白）。
@@ -77,9 +76,6 @@ class _MainPageState extends State<MainPage> {
   // 下次触发时刻文本（全局触发，所有 provider 共享同一值）。每个 UsageFrame legend 后
   // 显示「<标题> : 下次触发在 HH:mm」。由 _onTriggerTick（6s）定期刷新 setState。
   String _nextTriggerText = '';
-  // 窗口是否聚焦（由 WindowController.onFocusedChanged 回调驱动）。失焦时顶部栏
-  // （齿轮+置顶）Opacity 0 隐去，聚焦时 1.0 显示。默认 true 避免首帧闪隐。
-  bool _focused = true;
 
   @override
   void initState() {
@@ -98,10 +94,6 @@ class _MainPageState extends State<MainPage> {
       const Duration(seconds: 6),
       (_) => _onTriggerTick(),
     );
-    // 注册焦点回调：失焦/聚焦时 setState 更新 _focused，驱动顶部栏 Opacity 隐去/显示。
-    widget.window.onFocusedChanged = (f) {
-      if (mounted) setState(() => _focused = f);
-    };
     WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
   }
 
@@ -138,7 +130,7 @@ class _MainPageState extends State<MainPage> {
       final provider = _providerFor(p);
       if (provider == null) {
         // 未知厂商：同步置错误结果，无需 async。
-        _usages[p.id] = const UsageResult('未知厂商', [], '未知厂商，不支持用量查询');
+        _usages[p.id] = const UsageResult('未知厂商', [], 'unknownVendorUnsupported');
         continue;
       }
       // 立即启动（IIFE）并行查询；每个完成即 setState 显示，先到先显。
@@ -223,8 +215,9 @@ class _MainPageState extends State<MainPage> {
   /// 算下次全局触发时刻 → 拼成「下次触发在 HH:mm」（无下次则空，不显示）。
   /// 触发是全局时刻（01/07/13/19），所有 provider 共享同一值，故放每个用量框 legend 后。
   void _updateNextTrigger() {
+    final now = DateTime.now();
     final next = SchedulerService.nextTrigger(
-      DateTime.now(),
+      now,
       _globalTriggerKey(),
       _config.triggerHours,
     );
@@ -235,9 +228,14 @@ class _MainPageState extends State<MainPage> {
       }
       return;
     }
-    final hh = next.hour.toString().padLeft(2, '0');
-    final mm = next.minute.toString().padLeft(2, '0');
-    final text = '下次触发在 $hh:$mm';
+    // 用本地化键 nextTriggerFormat（zh「下次触发大模型: HH:mm (X分Y秒后)」/
+    // en「Next trigger: HH:mm (XmYs)」）：{0:HH:mm}=下次时刻、{1}=剩余分、{2}=剩余秒。
+    final dur = next.difference(now);
+    final text = widget.l10n.t('nextTriggerFormat').fmt([
+      next,
+      dur.inMinutes,
+      dur.inSeconds % 60,
+    ]);
     if (text != _nextTriggerText) {
       _nextTriggerText = text;
       if (mounted) setState(() {});
@@ -265,28 +263,19 @@ class _MainPageState extends State<MainPage> {
     if (rs == null) return false;
     if (rs.isBusy) return false;
     rs.isBusy = true;
-    rs.text = widget.l10n.t('loading');
     if (mounted) setState(() {});
-    final buf = StringBuffer();
-    Timer? flushTimer;
     try {
       final model = p.model.isEmpty ? 'glm-5.1' : p.model;
       final prompt =
           '${widget.l10n.t('jokePrompt')}\nseed=${DateTime.now().millisecondsSinceEpoch % 10000}';
+      // ResultPanel 已删除：流式 chunk 不再显示，onChunk 仅消费避免 backpressure，
+      // 不写 rs.text、不节流 setState（曾每 50ms 全量重建却无 reader，纯浪费）。
       await widget.llm.askStream(
         apiUrl: p.apiUrl,
         apiKey: p.apiKey,
         model: model,
         question: prompt,
-        onChunk: (c) {
-          if (buf.isEmpty) rs.text = '';
-          buf.write(c);
-          rs.text = buf.toString();
-          flushTimer ??= Timer(const Duration(milliseconds: 50), () {
-            flushTimer = null;
-            if (mounted) setState(() {});
-          });
-        },
+        onChunk: (_) {},
       );
       if (mounted) {
         rs.header = widget.l10n.t('resultTimestamp').fmt([DateTime.now()]);
@@ -328,12 +317,11 @@ class _MainPageState extends State<MainPage> {
 
   // ===== 放大态（T8）=====
 
-  /// 打开放大态：放大窗口到 420×520 并显示 ConfigPanel（[mode] 历史遗留，
-  /// 仅 'config'，手动触发已删）。
+  /// 打开放大态：放大窗口到 420×520 并显示 ConfigPanel。
   ///
   /// 先 await enlarge（窗口先放大），再 setState 切放大态布局——避免放大态布局在
   /// 旧 mini 尺寸窗口渲染一帧被裁剪。enlarge 内会先平移到屏内再 setSize。
-  Future<void> _openEnlarged(String mode) async {
+  Future<void> _openEnlarged() async {
     await widget.window.enlarge(w: _enlargedW, h: _enlargedInitH);
     if (!mounted) return;
     // 放大态必须看清内容 → 强制全显（覆盖失焦半透），关闭时恢复按焦点。
@@ -341,10 +329,7 @@ class _MainPageState extends State<MainPage> {
     // 重置阈值：新打开必然与 0 差异>2px，确保 config 首帧收缩生效（即便内容高
     // 与上次关闭时相同也会重新设一次，避免残留 _lastEnlargedH 导致不收缩）。
     _lastEnlargedH = 0;
-    setState(() {
-      _enlarged = true;
-      _enlargedMode = mode;
-    });
+    setState(() => _enlarged = true);
   }
 
   /// 关闭放大态：缩回 mini（保留当前位置），由放大区 ConfigPanel 的保存/取消触发。
@@ -353,10 +338,7 @@ class _MainPageState extends State<MainPage> {
   /// 最后排 PostFrame 重测到新内容高（修注释承诺的"修正"——配置增删 provider 后
   /// 缩回会立即重测）。_resizeToContent 内 `if (_enlarged) return` 不影响（此处已置 false）。
   Future<void> _closeEnlarged() async {
-    setState(() {
-      _enlarged = false;
-      _enlargedMode = null;
-    });
+    setState(() => _enlarged = false);
     await widget.window.shrinkToContent(_lastContentHeight, _miniWidth());
     // 关闭放大态：解除强制全显，恢复按焦点判定透明度。
     await widget.window.setOpacityForcedActive(false);
@@ -368,7 +350,7 @@ class _MainPageState extends State<MainPage> {
   /// ConfigPanel 内容高度变化回调：放大态据此把窗口收缩到实际内容高，
   /// 消除固定 520 的底部空白。>2px 阈值防抖动；非放大态忽略。
   void _onConfigHeight(double h) {
-    if (!_enlarged || _enlargedMode != 'config') return;
+    if (!_enlarged) return;
     if ((h - _lastEnlargedH).abs() > 2) {
       _lastEnlargedH = h;
       widget.window.setHeight(_enlargedW, h);
@@ -403,6 +385,8 @@ class _MainPageState extends State<MainPage> {
     });
     widget.configService.save(_config);
     _closeEnlarged();
+    // triggerHours 改动后立即刷新「下次触发」文本，避免滞后到下个 6s tick。
+    _updateNextTrigger();
     // 新增/改动的 provider 立即查一次用量，避免空白框等到下个 60s tick。
     // （_closeEnlarged 已切回 mini 并排了 PostFrame 重测高度；这里异步查用量，
     // 查完 setState 各框填充 + 再排一次 PostFrame 修正高度。）
@@ -457,49 +441,48 @@ class _MainPageState extends State<MainPage> {
   /// （约 24 含 padding），避免 Material 默认触摸目标撑高行。
   Widget _buildTopBar() {
     final l = widget.l10n;
-    // 失焦时顶部栏（齿轮+置顶）Opacity 0 隐去，聚焦时 1.0 显示。
-    return Opacity(
-      opacity: _focused ? 1.0 : 0.0,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-        child: SizedBox(
-          height: 20,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              IconButton(
-                iconSize: 14,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minHeight: 20, minWidth: 20),
-                tooltip: l.t('settings'),
-                icon: const Icon(
-                  Icons.settings,
-                  color: Color(0xFFAAAAAA),
-                  size: 14,
-                ),
-                onPressed: () => _openEnlarged('config'),
+    // 顶部栏（齿轮+置顶）跟随窗口透明度：失焦半透 0.9 / 聚焦 1.0 由 WindowController
+    // 的 setOpacity 统一作用于整个窗口，顶部栏不再单独包 Opacity（避免双重半透叠加，
+    // 及 Opacity 不屏蔽命中测试导致不可见控件仍可点击的问题）。
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+      child: SizedBox(
+        height: 20,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            IconButton(
+              iconSize: 14,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minHeight: 20, minWidth: 20),
+              tooltip: l.t('settings'),
+              icon: const Icon(
+                Icons.settings,
+                color: Color(0xFFAAAAAA),
+                size: 14,
               ),
-              const Spacer(),
-              Transform.scale(
-                scale: 0.7,
-                child: Checkbox(
-                  value: _config.isAlwaysOnTop,
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  onChanged: (v) {
-                    setState(() => _config.isAlwaysOnTop = v ?? false);
-                    widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
-                    widget.configService.save(_config);
-                  },
-                ),
+              onPressed: _openEnlarged,
+            ),
+            const Spacer(),
+            Transform.scale(
+              scale: 0.7,
+              child: Checkbox(
+                value: _config.isAlwaysOnTop,
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                onChanged: (v) {
+                  setState(() => _config.isAlwaysOnTop = v ?? false);
+                  widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
+                  widget.configService.save(_config);
+                },
               ),
-              Text(
-                l.t('pinLabel'),
-                style: const TextStyle(color: Colors.white, fontSize: 11),
-              ),
-              const SizedBox(width: 4),
-            ],
-          ),
+            ),
+            Text(
+              l.t('pinLabel'),
+              style: const TextStyle(color: Colors.white, fontSize: 11),
+            ),
+            const SizedBox(width: 4),
+          ],
         ),
       ),
     );

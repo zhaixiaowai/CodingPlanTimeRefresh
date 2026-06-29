@@ -61,8 +61,11 @@ class UsageFrame extends StatelessWidget {
                     child: Text(
                       // 优先错误信息；无错误且首次查询中 → loading 占位；
                       // 否则空（边缘：非 loading 且无 items 无错误）。
-                      result.errorMessage ??
-                          (isLoading ? l10n.t('usageLoading') : ''),
+                      // errorMessage 为 l10n key（provider/解析器返回 key），在此翻译；
+                      // 原始第三方错误（非 key）l10n.t 未命中返回自身原样显示。
+                      result.errorMessage != null
+                          ? l10n.t(result.errorMessage!)
+                          : (isLoading ? l10n.t('usageLoading') : ''),
                       style: const TextStyle(
                         color: Color(0xFF999999),
                         fontSize: 11,
@@ -143,27 +146,25 @@ class UsageFrame extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Expanded(
-            child: _progressBar(pct, isMcp: it.labelKey == 'mcpMonthly'),
-          ),
-          const SizedBox(width: 6),
-          // 重置时间：null 不显示（不占位）。去掉 ⟳ 图标，保留「重置」文字。
-          if (reset != null)
-            Text(
-              resetText(reset),
-              maxLines: 1,
-              softWrap: false,
-              style: const TextStyle(color: Color(0xFF999999), fontSize: 10),
+            child: _progressBar(
+              pct,
+              isMcp: it.labelKey == 'mcpMonthly',
+              resetText: reset != null ? resetText(reset) : null,
             ),
+          ),
         ],
       ),
     );
   }
 
-  /// 进度条 + 内嵌百分比文字（Stack：灰底条 + pct 着色填充 + 居中百分比）。
-  /// [isMcp] 时百分比前加 (mcp) 标注（mcp 月度行），如「(mcp)34%」。
-  Widget _progressBar(double pct, {required bool isMcp}) {
+  /// 进度条 + 内嵌百分比文字 + 重置时间（Stack：灰底条 + pct 着色填充 + 重置时间
+  /// 右对齐 + 居中百分比）。[isMcp] 时百分比前加 (mcp) 标注；[resetText] 非空时右对齐
+  /// 嵌在条内（半透白小字，绘制在百分比下层避免遮挡）。
+  Widget _progressBar(double pct, {required bool isMcp, String? resetText}) {
     final c = pct.clamp(0.0, 100.0);
-    final pctText = c.toStringAsFixed(c == c.roundToDouble() ? 0 : 1);
+    // 文字用真实 pct（超配额时显示「150%」告警，不丢信息）；进度宽度/颜色用钳制值 c
+    // （视觉不应超满格）。
+    final pctText = pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1);
     return SizedBox(
       height: 16,
       child: Stack(
@@ -189,7 +190,18 @@ class UsageFrame extends StatelessWidget {
               ),
             ),
           ),
-          // 内嵌百分比文字（白色，居中于整条）。mcp 行前加 (mcp) 标注。
+          // 重置时间：右对齐嵌在进度条内（半透白小字，绘制在百分比下层避免遮挡）。
+          if (resetText != null)
+            Positioned(
+              right: 4,
+              child: Text(
+                resetText,
+                maxLines: 1,
+                softWrap: false,
+                style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 9),
+              ),
+            ),
+          // 内嵌百分比文字（白色，居中于整条，最后绘制在最上层）。mcp 行前加 (mcp) 标注。
           Text(
             isMcp ? '(mcp)$pctText%' : '$pctText%',
             style: const TextStyle(

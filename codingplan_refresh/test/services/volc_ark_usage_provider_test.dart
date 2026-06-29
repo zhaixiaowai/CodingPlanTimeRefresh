@@ -96,7 +96,7 @@ void main() {
       },
     );
     final r = await provider.query();
-    expect(r.errorMessage, contains('arkcli 未安装'));
+    expect(r.errorMessage, 'arkcliNotInstalled');
   });
 
   test('超时 → 提示查询超时', () async {
@@ -106,7 +106,7 @@ void main() {
       },
     );
     final r = await provider.query();
-    expect(r.errorMessage, '查询超时');
+    expect(r.errorMessage, 'queryTimeout');
   });
 
   test('refresh_token invalid → 提示重新登录（不重试，usage 仅调用一次）', () async {
@@ -122,7 +122,7 @@ void main() {
       },
     );
     final r = await provider.query();
-    expect(r.errorMessage, '登录凭证已过期，请重新执行 arkcli auth login');
+    expect(r.errorMessage, 'tokenExpired');
     expect(r.items, isEmpty);
     // 不再自动重试：usage plan 只调用一次（旧版会延迟1s重试，callCount==2）
     expect(usageCallCount, 1);

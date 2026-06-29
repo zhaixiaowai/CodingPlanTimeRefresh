@@ -324,8 +324,8 @@ void main() {
     // 修复前量 Scaffold（=600）会在此断言失败；修复后量内容（~120-180）通过。
     expect(window.lastHeight, lessThan(520));
     expect(window.lastHeight, greaterThan(50));
-    // 宽度按语言：中文（测试 initialize 'zh'）= 230。
-    expect(window.lastWidth, 230);
+    // 宽度统一英文版宽度 expandedWidth=260（曾按语言中文 230 过窄、标题栏无法拖动）。
+    expect(window.lastWidth, ConfigService.expandedWidth);
   });
 
   // ===== T8 放大态强制全显接线 =====
@@ -353,34 +353,5 @@ void main() {
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(window.forcedValues, contains(false));
-  });
-
-  // ===== 顶部栏失焦 Opacity 隐去 =====
-
-  testWidgets('失焦 → 顶部栏 Opacity 0，聚焦 → 1.0', (tester) async {
-    final window = FakeWindowController();
-    await tester.pumpWidget(
-      buildApp(
-        config: AppConfig(
-          providers: [ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k')],
-        ),
-        window: window,
-      ),
-    );
-    await tester.pump();
-    Opacity findTopBarOpacity() => tester.widget<Opacity>(
-      find.ancestor(of: find.byIcon(Icons.settings), matching: find.byType(Opacity))
-          .first,
-    );
-    // 初始 _focused=true → 顶部栏 Opacity 1.0。
-    expect(findTopBarOpacity().opacity, 1.0);
-    // 模拟失焦 → 顶部栏 Opacity 0（齿轮+置顶隐去）。
-    window.onFocusedChanged?.call(false);
-    await tester.pump();
-    expect(findTopBarOpacity().opacity, 0.0);
-    // 恢复聚焦 → Opacity 1.0。
-    window.onFocusedChanged?.call(true);
-    await tester.pump();
-    expect(findTopBarOpacity().opacity, 1.0);
   });
 }

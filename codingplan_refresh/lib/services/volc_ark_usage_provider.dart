@@ -63,7 +63,9 @@ class VolcArkUsageProvider implements UsageProvider {
     //    重试无效，反而让用量查询多等 1s。由 _parseUsage 把该错误转成友好提示。
     final usageStdout = await _runSafe(['usage', 'plan']);
     if (usageStdout.isError) {
-      return UsageResult('火山方舟', [], usageStdout.error!);
+      // error 路径（arkcli 非零退出+stderr → ProcessException → _runSafe 透传原始 msg）
+      // 也走友好转换，避免 refresh_token 失效走 stderr 时用户看到原始英文错误。
+      return UsageResult('火山方舟', [], _friendlyMsg(usageStdout.error!));
     }
     final parsed = _parseUsage(usageStdout.value!);
 
@@ -74,6 +76,18 @@ class VolcArkUsageProvider implements UsageProvider {
         ? '火山方舟 ${tier[0].toUpperCase()}${tier.substring(1)}'
         : parsed.title;
     return UsageResult(title, parsed.items, parsed.errorMessage);
+  }
+
+  /// 把原始错误消息转友好提示：refresh_token 失效 → 指引重新登录；空 → 兜底文案。
+  /// query 的 error 路径（stderr/ProcessException）与 _parseUsage 的 ok:false 路径共用，
+  /// 确保无论 arkcli 把 refresh_token 错误走 stdout 还是 stderr 都转中文友好提示。
+  String _friendlyMsg(String msg) {
+    if (msg.contains('The request parameter refresh_token is invalid')) {
+      return 'tokenExpired';
+    }
+    // 非空原始错误（arkcli/API 返回的具体信息）原样透传（UI 层 l10n.t 未命中返回自身）；
+    // 空则兜底 queryFailed key。
+    return msg.isEmpty ? 'queryFailed' : msg;
   }
 
   /// 调用 arkcli 子命令，统一处理异常 → (error 不为 null 即失败)。
@@ -92,13 +106,14 @@ class VolcArkUsageProvider implements UsageProvider {
           msg.contains('系统找不到') ||
           e.toString().contains('No such file') ||
           e.errorCode == 2) {
-        return _RunResult.withError('arkcli 未安装，参考 README');
+        return _RunResult.withError('arkcliNotInstalled');
       }
-      return _RunResult.withError(msg.isEmpty ? '查询失败，未找到数据' : msg);
+      // 非空 stderr（具体错误）原样透传；空兜底 queryFailed key。
+      return _RunResult.withError(msg.isEmpty ? 'queryFailed' : msg);
     } on TimeoutException {
-      return _RunResult.withError('查询超时');
+      return _RunResult.withError('queryTimeout');
     } catch (_) {
-      return _RunResult.withError('查询失败，未找到数据');
+      return _RunResult.withError('queryFailed');
     }
   }
 
@@ -133,15 +148,9 @@ class VolcArkUsageProvider implements UsageProvider {
       final doc = jsonDecode(stdout) as Map<String, dynamic>;
       if (doc['ok'] == false) {
         final err = doc['error'];
-        var msg = err is Map ? (err['message'] as String? ?? '') : '';
-        // refresh_token 失效（arkcli 登录凭证过期，常因长时间未用 arkcli）：转友好
-        // 提示指引用户重新登录，而非显示原始英文错误。详见 README「登录凭证过期」。
-        if (msg.contains('The request parameter refresh_token is invalid')) {
-          msg = '登录凭证已过期，请重新执行 arkcli auth login';
-        } else if (msg.isEmpty) {
-          msg = '查询失败，未找到数据';
-        }
-        return _ParsedUsage('火山方舟', '', const [], msg);
+        final msg = err is Map ? (err['message'] as String? ?? '') : '';
+        // refresh_token 失效（arkcli 登录凭证过期）等错误统一走 _friendlyMsg 转友好提示。
+        return _ParsedUsage('火山方舟', '', const [], _friendlyMsg(msg));
       }
       final items = doc['items'] as List;
       if (items.isEmpty) {

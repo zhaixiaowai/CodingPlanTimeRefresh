@@ -62,7 +62,11 @@ class AppConfig {
   /// key = provider.id → 该 provider 的 LastAutoTriggerKey（定时去重，每个 provider 独立）。
   Map<String, String> lastTriggerKeys;
 
-  /// 定时触发时刻（整点 0-23）。默认 [1,7,13,19]；空列表 = 关闭定时保活。
+  /// 定时触发时刻默认值（整点 0-23）。AppConfig 缺省与 SchedulerService fallback
+  /// 共用此单一来源，避免散落字面量分叉。
+  static const List<int> defaultTriggerHours = [1, 7, 13, 19];
+
+  /// 定时触发时刻（整点 0-23）。默认 [defaultTriggerHours]；空列表 = 关闭定时保活。
   List<int> triggerHours;
 
   AppConfig({
@@ -73,7 +77,7 @@ class AppConfig {
     List<int>? triggerHours,
   }) : providers = providers ?? [],
        lastTriggerKeys = lastTriggerKeys ?? {},
-       triggerHours = triggerHours ?? const [1, 7, 13, 19];
+       triggerHours = triggerHours ?? defaultTriggerHours;
 
   factory AppConfig.fromJson(Map<String, dynamic> json) {
     // 新格式：Providers 数组
@@ -92,10 +96,14 @@ class AppConfig {
         language: json['Language'] as String?,
         lastTriggerKeys: ltk,
         triggerHours:
-            (json['TriggerHours'] as List<dynamic>?)
+            ((json['TriggerHours'] as List<dynamic>?)
                 ?.map((e) => (e as num).toInt())
-                .toList() ??
-            const [1, 7, 13, 19],
+                // 过滤越界小时（0-23）：防配置被篡改/异常时 nextTrigger 靠 DateTime
+                // 规范化显示「01:00」但 checkTrigger 的 now.hour==h 永不命中、
+                // 保活静默失效。
+                .where((h) => h >= 0 && h < 24)
+                .toList()) ??
+            defaultTriggerHours,
       );
     }
     // 旧格式（单组 ApiUrl/ApiKey/Model/...）→ 迁移为 providers[0]。
@@ -115,7 +123,7 @@ class AppConfig {
       isAlwaysOnTop: json['IsAlwaysOnTop'] as bool? ?? false,
       language: json['Language'] as String?,
       lastTriggerKeys: {id: json['LastAutoTriggerKey'] as String? ?? ''},
-      triggerHours: const [1, 7, 13, 19],
+      triggerHours: defaultTriggerHours,
     );
   }
 

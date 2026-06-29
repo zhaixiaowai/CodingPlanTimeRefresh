@@ -62,6 +62,25 @@ class LocalizationService {
     'usageLoading': {'zh': '用量查询中...', 'en': 'Loading usage...'},
     // ErrorMessageFormat —— 占位 {0}
     'errorMessage': {'zh': '错误，等待重试: {0}', 'en': 'Error, retrying: {0}'},
+    // 用量查询失败兜底（provider/解析器返回此 key，UI 层 l10n.t 翻译）
+    'queryFailed': {'zh': '查询失败，未找到数据', 'en': 'Query failed, no data found'},
+    // 未知厂商不支持用量查询
+    'unknownVendorUnsupported': {
+      'zh': '未知厂商，不支持用量查询',
+      'en': 'Unknown vendor, usage query unsupported',
+    },
+    // arkcli 未安装（火山方舟 provider）
+    'arkcliNotInstalled': {
+      'zh': 'arkcli 未安装，参考 README',
+      'en': 'arkcli not installed, see README',
+    },
+    // 用量查询超时
+    'queryTimeout': {'zh': '查询超时', 'en': 'Query timed out'},
+    // arkcli 登录凭证过期（refresh_token invalid）
+    'tokenExpired': {
+      'zh': '登录凭证已过期，请重新执行 arkcli auth login',
+      'en': 'Login credentials expired, run "arkcli auth login" again',
+    },
     // ApiUrlNotConfigured
     'apiUrlNotConfigured': {
       'zh': 'API URL 未配置',
