@@ -142,13 +142,14 @@ class UsageFrame extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-          Expanded(child: _progressBar(pct)),
+          Expanded(
+            child: _progressBar(pct, isMcp: it.labelKey == 'mcpMonthly'),
+          ),
           const SizedBox(width: 6),
           // 重置时间：null 不显示（不占位）。去掉 ⟳ 图标，保留「重置」文字。
-          // mcpMonthly 行的 (MCP) 标注放重置文本最前（避免 label 变长导致英文换行）。
           if (reset != null)
             Text(
-              "${it.labelKey == 'mcpMonthly' ? '(MCP) ' : ''}${resetText(reset)}",
+              resetText(reset),
               maxLines: 1,
               softWrap: false,
               style: const TextStyle(color: Color(0xFF999999), fontSize: 10),
@@ -159,8 +160,10 @@ class UsageFrame extends StatelessWidget {
   }
 
   /// 进度条 + 内嵌百分比文字（Stack：灰底条 + pct 着色填充 + 居中百分比）。
-  Widget _progressBar(double pct) {
+  /// [isMcp] 时百分比前加 (mcp) 标注（mcp 月度行），如「(mcp)34%」。
+  Widget _progressBar(double pct, {required bool isMcp}) {
     final c = pct.clamp(0.0, 100.0);
+    final pctText = c.toStringAsFixed(c == c.roundToDouble() ? 0 : 1);
     return SizedBox(
       height: 16,
       child: Stack(
@@ -186,9 +189,9 @@ class UsageFrame extends StatelessWidget {
               ),
             ),
           ),
-          // 内嵌百分比文字（白色，居中于整条）。
+          // 内嵌百分比文字（白色，居中于整条）。mcp 行前加 (mcp) 标注。
           Text(
-            '${c.toStringAsFixed(c == c.roundToDouble() ? 0 : 1)}%',
+            isMcp ? '(mcp)$pctText%' : '$pctText%',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 11,
