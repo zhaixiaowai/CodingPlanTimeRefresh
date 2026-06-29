@@ -357,7 +357,7 @@ class _MainPageState extends State<MainPage> {
       _enlarged = false;
       _enlargedMode = null;
     });
-    await widget.window.shrinkToContent(_lastContentHeight);
+    await widget.window.shrinkToContent(_lastContentHeight, _miniWidth());
     // 关闭放大态：解除强制全显，恢复按焦点判定透明度。
     await widget.window.setOpacityForcedActive(false);
     if (mounted) {
@@ -416,6 +416,9 @@ class _MainPageState extends State<MainPage> {
   /// 框 + padding），一次量全，避免分段相加漏算顶部。放大态不参与自适应
   /// （窗口固定 420×520），直接 return，否则会用 520 污染 _lastContentHeight，
   /// 导致缩回 mini 时 shrinkToContent(520)。
+  /// 当前语言下的 mini 窗口宽度（中文窄、英文宽）。语言切换后窗口宽度随之变。
+  double _miniWidth() => ConfigService.widthForLanguage(widget.l10n.current);
+
   void _resizeToContent() {
     if (_enlarged) return;
     if (!mounted) return;
@@ -425,7 +428,7 @@ class _MainPageState extends State<MainPage> {
     final h = contentBox.size.height;
     if ((h - _lastContentHeight).abs() > 2) {
       _lastContentHeight = h;
-      widget.window.setHeight(ConfigService.expandedWidth, h);
+      widget.window.setHeight(_miniWidth(), h);
     }
   }
 

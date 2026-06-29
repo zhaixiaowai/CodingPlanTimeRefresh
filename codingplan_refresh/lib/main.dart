@@ -33,7 +33,8 @@ Future<void> main() async {
 
   final window = WindowController();
   await window.setup(
-    width: ConfigService.expandedWidth,
+    // 启动宽度按当前语言（l10n.initialize 已在上文解析 language）。
+    width: ConfigService.widthForLanguage(l10n.current),
     // isCollapsed 字段已移除（多组改造）；启动默认展开态，T6 由窗口状态机决定高度。
     height: ConfigService.expandedHeight,
     alwaysOnTop: config.isAlwaysOnTop,

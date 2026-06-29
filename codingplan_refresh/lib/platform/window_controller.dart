@@ -113,10 +113,10 @@ class WindowController with WindowListener {
     await windowManager.setSize(Size(width, frame.height));
   }
 
-  /// 缩回 mini（自适应高度，保留当前位置）。
-  Future<void> shrinkToContent(double contentHeight) async {
-    final frame = await _frameRectForClient(230, contentHeight);
-    await windowManager.setSize(Size(230, frame.height));
+  /// 缩回 mini（自适应高度，保留当前位置）。[width] 由调用方按当前语言传入。
+  Future<void> shrinkToContent(double contentHeight, double width) async {
+    final frame = await _frameRectForClient(width, contentHeight);
+    await windowManager.setSize(Size(width, frame.height));
   }
 
   /// 按「客户区尺寸=传入的 w/h」反推窗口外框尺寸（含标题栏+边框补偿）。
