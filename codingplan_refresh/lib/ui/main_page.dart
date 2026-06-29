@@ -458,7 +458,7 @@ class _MainPageState extends State<MainPage> {
               iconSize: 14,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minHeight: 20, minWidth: 20),
-              tooltip: '',
+              tooltip: l.t('settings'),
               icon: const Icon(
                 Icons.settings,
                 color: Color(0xFFAAAAAA),

@@ -102,7 +102,7 @@ class WindowController with WindowListener {
   ///
   /// **Windows 标题栏+边框补偿**：`window_manager.setSize` 走 `SetWindowPos` 设的是
   /// 窗口**外框**尺寸（含标题栏+边框），但传入的 h 是客户区**内容高**（Flutter 渲染
-  /// 的 Scaffold.body）。若直接 setSize(330, 内容高)，客户区 = 内容高 - 标题栏(~32)
+  /// 的 Scaffold.body）。若直接 setSize(280, 内容高)，客户区 = 内容高 - 标题栏(~32)
   /// - 边框(~8) ≈ 内容高-40，内容被裁、出现滚动条。故 Windows 上用 AdjustWindowRectEx
   /// 按「内容高=客户区」算出对应外框高再 setSize（DPI 安全，非硬编码 40）。
   ///
