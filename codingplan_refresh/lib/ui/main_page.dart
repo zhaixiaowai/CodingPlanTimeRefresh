@@ -77,6 +77,9 @@ class _MainPageState extends State<MainPage> {
   // 下次触发时刻文本（全局触发，所有 provider 共享同一值）。每个 UsageFrame legend 后
   // 显示「<标题> : 下次触发在 HH:mm」。由 _onTriggerTick（6s）定期刷新 setState。
   String _nextTriggerText = '';
+  // 窗口是否聚焦（由 WindowController.onFocusedChanged 回调驱动）。失焦时顶部栏
+  // （齿轮+置顶）Opacity 0 隐去，聚焦时 1.0 显示。默认 true 避免首帧闪隐。
+  bool _focused = true;
 
   @override
   void initState() {
@@ -95,6 +98,10 @@ class _MainPageState extends State<MainPage> {
       const Duration(seconds: 6),
       (_) => _onTriggerTick(),
     );
+    // 注册焦点回调：失焦/聚焦时 setState 更新 _focused，驱动顶部栏 Opacity 隐去/显示。
+    widget.window.onFocusedChanged = (f) {
+      if (mounted) setState(() => _focused = f);
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
   }
 
@@ -447,45 +454,49 @@ class _MainPageState extends State<MainPage> {
   /// （约 24 含 padding），避免 Material 默认触摸目标撑高行。
   Widget _buildTopBar() {
     final l = widget.l10n;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-      child: SizedBox(
-        height: 20,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            IconButton(
-              iconSize: 14,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minHeight: 20, minWidth: 20),
-              tooltip: l.t('settings'),
-              icon: const Icon(
-                Icons.settings,
-                color: Color(0xFFAAAAAA),
-                size: 14,
+    // 失焦时顶部栏（齿轮+置顶）Opacity 0 隐去，聚焦时 1.0 显示。
+    return Opacity(
+      opacity: _focused ? 1.0 : 0.0,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
+        child: SizedBox(
+          height: 20,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              IconButton(
+                iconSize: 14,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minHeight: 20, minWidth: 20),
+                tooltip: l.t('settings'),
+                icon: const Icon(
+                  Icons.settings,
+                  color: Color(0xFFAAAAAA),
+                  size: 14,
+                ),
+                onPressed: () => _openEnlarged('config'),
               ),
-              onPressed: () => _openEnlarged('config'),
-            ),
-            const Spacer(),
-            Transform.scale(
-              scale: 0.7,
-              child: Checkbox(
-                value: _config.isAlwaysOnTop,
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                onChanged: (v) {
-                  setState(() => _config.isAlwaysOnTop = v ?? false);
-                  widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
-                  widget.configService.save(_config);
-                },
+              const Spacer(),
+              Transform.scale(
+                scale: 0.7,
+                child: Checkbox(
+                  value: _config.isAlwaysOnTop,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: (v) {
+                    setState(() => _config.isAlwaysOnTop = v ?? false);
+                    widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
+                    widget.configService.save(_config);
+                  },
+                ),
               ),
-            ),
-            Text(
-              l.t('pinLabel'),
-              style: const TextStyle(color: Colors.white, fontSize: 11),
-            ),
-            const SizedBox(width: 4),
-          ],
+              Text(
+                l.t('pinLabel'),
+                style: const TextStyle(color: Colors.white, fontSize: 11),
+              ),
+              const SizedBox(width: 4),
+            ],
+          ),
         ),
       ),
     );

@@ -354,4 +354,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(window.forcedValues, contains(false));
   });
+
+  // ===== 顶部栏失焦 Opacity 隐去 =====
+
+  testWidgets('失焦 → 顶部栏 Opacity 0，聚焦 → 1.0', (tester) async {
+    final window = FakeWindowController();
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k')],
+        ),
+        window: window,
+      ),
+    );
+    await tester.pump();
+    Opacity findTopBarOpacity() => tester.widget<Opacity>(
+      find.ancestor(of: find.byIcon(Icons.settings), matching: find.byType(Opacity))
+          .first,
+    );
+    // 初始 _focused=true → 顶部栏 Opacity 1.0。
+    expect(findTopBarOpacity().opacity, 1.0);
+    // 模拟失焦 → 顶部栏 Opacity 0（齿轮+置顶隐去）。
+    window.onFocusedChanged?.call(false);
+    await tester.pump();
+    expect(findTopBarOpacity().opacity, 0.0);
+    // 恢复聚焦 → Opacity 1.0。
+    window.onFocusedChanged?.call(true);
+    await tester.pump();
+    expect(findTopBarOpacity().opacity, 1.0);
+  });
 }
