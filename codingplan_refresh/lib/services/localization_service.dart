@@ -15,14 +15,6 @@ class LocalizationService {
   String current = 'zh';
 
   static const _table = <String, Map<String, String>>{
-    // ManualTriggerButton
-    'manualTrigger': {'zh': '手动触发大模型', 'en': 'Trigger LLM'},
-    // ManualTriggerPopupButton
-    'manualTriggerPopup': {'zh': '手动触发,让模型讲个冷笑话', 'en': 'Trigger a joke'},
-    // WaitingPlaceholder
-    'waitingPlaceholder': {'zh': '等待触发...', 'en': 'Waiting...'},
-    // ResultHeader
-    'resultHeader': {'zh': '返回结果', 'en': 'Result'},
     // SaveButton
     'save': {'zh': '保存', 'en': 'Save'},
     // CancelButton

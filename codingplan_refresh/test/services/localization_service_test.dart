@@ -11,9 +11,9 @@ void main() {
   test('zh 与 en 文案不同', () {
     final l = LocalizationService();
     l.initialize('zh');
-    final zhText = l.t('resultHeader');
+    final zhText = l.t('settings');
     l.setLanguage('en');
-    final enText = l.t('resultHeader');
+    final enText = l.t('settings');
     expect(zhText, isNot(equals(enText)));
   });
 
@@ -50,5 +50,19 @@ void main() {
     l.initialize('zh');
     final dt = DateTime(2026, 6, 27, 9, 5);
     expect(l.t('resetOther').fmt([dt]), '重置 06/27 09:05');
+  });
+
+  test('已删 key 返回 key 本身（manualTrigger 等）', () {
+    final l = LocalizationService()..initialize('zh');
+    expect(l.t('manualTrigger'), 'manualTrigger');
+    expect(l.t('manualTriggerPopup'), 'manualTriggerPopup');
+    expect(l.t('waitingPlaceholder'), 'waitingPlaceholder');
+    expect(l.t('resultHeader'), 'resultHeader');
+  });
+
+  test('保留的定时触发 key 仍可用', () {
+    final l = LocalizationService()..initialize('zh');
+    expect(l.t('loading'), '调用中...');
+    expect(l.t('jokePrompt'), contains('冷笑话'));
   });
 }
