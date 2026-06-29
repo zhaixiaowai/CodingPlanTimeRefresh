@@ -129,9 +129,10 @@ class UsageFrame extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // label 固定宽（等宽对齐：每行进度条左端齐），softWrap:false 防英文「Week」换行。
+          // label 固定宽（等宽对齐：每行进度条左端齐）。中文（5H/周/月）短用 22，
+          // 英文（Week/Month）用 36。softWrap:false 防换行。窗口宽度不随此变。
           SizedBox(
-            width: 36,
+            width: l10n.current == 'zh' ? 22 : 36,
             child: Text(
               l10n.t(it.labelKey),
               textAlign: TextAlign.right,
