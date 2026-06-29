@@ -324,6 +324,7 @@ class _MainPageState extends State<MainPage> {
   ///
   /// 先 await enlarge（窗口先放大），再 setState 切放大态布局——避免放大态布局在
   /// 旧 mini 尺寸窗口渲染一帧被裁剪。enlarge 内会先平移到屏内再 setSize。
+  // ignore: unused_element
   Future<void> _openEnlarged() async {
     await widget.window.enlarge(w: _enlargedW, h: _enlargedInitH);
     if (!mounted) return;
@@ -439,54 +440,69 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  /// 顶部栏：齿轮按钮 + 置顶外露（mini 态用；放大态覆盖顶部栏，不渲染此）。
-  /// 控件强制小尺寸：icon 14、Checkbox scale 缩放、整体 SizedBox(height:20) 锁行高
-  /// （约 24 含 padding），避免 Material 默认触摸目标撑高行。
+  /// 顶部栏：右侧 4 按钮（置顶图标互切 / 设置 / 最小化 / 关闭）。左侧留白兼拖动区。
+  /// 整个 mini body 在外层已包 GestureDetector(onPanStart: startDragging)，按钮作为
+  /// 子节点 tap 优先命中，留白/用量框区域可拖动窗口。
+  ///
+  /// 置顶：两个不同图标互切（push_pin_outlined 未置顶 / push_pin 已置顶），**都灰色**
+  /// 不变色（用户决策：不用高亮蓝区分，避免视觉噪音）。
   Widget _buildTopBar() {
     final l = widget.l10n;
-    // 顶部栏（齿轮+置顶）跟随窗口透明度：失焦半透 0.9 / 聚焦 1.0 由 WindowController
-    // 的 setOpacity 统一作用于整个窗口，顶部栏不再单独包 Opacity（避免双重半透叠加，
-    // 及 Opacity 不屏蔽命中测试导致不可见控件仍可点击的问题）。
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
-      child: SizedBox(
-        height: 20,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            IconButton(
-              iconSize: 14,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minHeight: 20, minWidth: 20),
-              tooltip: l.t('settings'),
-              icon: const Icon(
-                Icons.settings,
-                color: Color(0xFFAAAAAA),
-                size: 14,
-              ),
-              onPressed: _openEnlarged,
+    final pinned = _config.isAlwaysOnTop;
+    return SizedBox(
+      height: 22,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 置顶：未置顶用 push_pin_outlined，已置顶用 push_pin（实心）。颜色恒灰。
+          IconButton(
+            iconSize: 14,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minHeight: 22, minWidth: 22),
+            tooltip: l.t('pinLabel'),
+            icon: Icon(
+              pinned ? Icons.push_pin : Icons.push_pin_outlined,
+              color: const Color(0xFFAAAAAA),
+              size: 14,
             ),
-            const Spacer(),
-            Transform.scale(
-              scale: 0.7,
-              child: Checkbox(
-                value: _config.isAlwaysOnTop,
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                onChanged: (v) {
-                  setState(() => _config.isAlwaysOnTop = v ?? false);
-                  widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
-                  widget.configService.save(_config);
-                },
-              ),
+            onPressed: () {
+              setState(() => _config.isAlwaysOnTop = !pinned);
+              widget.window.setAlwaysOnTop(_config.isAlwaysOnTop);
+              widget.configService.save(_config);
+            },
+          ),
+          // 设置（Task 5 接 settingsOpener.open()，此处先 disabled）。
+          IconButton(
+            iconSize: 14,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minHeight: 22, minWidth: 22),
+            tooltip: l.t('settings'),
+            icon: const Icon(Icons.settings, color: Color(0xFFAAAAAA), size: 14),
+            onPressed: null,
+          ),
+          // 最小化。
+          IconButton(
+            iconSize: 14,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minHeight: 22, minWidth: 22),
+            icon: const Icon(
+              Icons.horizontal_rule,
+              color: Color(0xFFAAAAAA),
+              size: 14,
             ),
-            Text(
-              l.t('pinLabel'),
-              style: const TextStyle(color: Colors.white, fontSize: 11),
-            ),
-            const SizedBox(width: 4),
-          ],
-        ),
+            onPressed: () => widget.window.minimize(),
+          ),
+          // 关闭 = 退出应用。
+          IconButton(
+            iconSize: 14,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minHeight: 22, minWidth: 22),
+            icon: const Icon(Icons.close, color: Color(0xFFAAAAAA), size: 14),
+            onPressed: () => widget.window.close(),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
     );
   }
@@ -497,36 +513,42 @@ class _MainPageState extends State<MainPage> {
   /// viewport 约束干扰测量（曾导致量到的 contentH 偏小、却仍出滚动条）。
   Widget _buildMini() {
     final l = widget.l10n;
-    return Padding(
-      key: _contentKey,
-      padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildTopBar(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: _config.providers
-                  .map(
-                    (p) => UsageFrame(
-                      result: _usages[p.id] ?? const UsageResult('', [], null),
-                      l10n: l,
-                      resetText: _resetText,
-                      displayName: p.name,
-                      // _usages[p.id]==null：从未查到过（首次查询中）→ loading 占位；
-                      // 非 null（有旧数据或错误）→ 显示旧内容，刷新查询无感。
-                      isLoading: _usages[p.id] == null,
-                      // 下次触发提示（全局共享同一值），显示在每个用量框 legend 后。
-                      nextTriggerText: _nextTriggerText,
-                    ),
-                  )
-                  .toList(),
+    return GestureDetector(
+      // 整个 mini 界面可拖动窗口；按钮作为子节点 tap 优先命中不影响拖动。
+      onPanStart: (_) => widget.window.startDragging(),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        key: _contentKey,
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTopBar(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: _config.providers
+                    .map(
+                      (p) => UsageFrame(
+                        result: _usages[p.id] ??
+                            const UsageResult('', [], null),
+                        l10n: l,
+                        resetText: _resetText,
+                        displayName: p.name,
+                        // _usages[p.id]==null：从未查到过（首次查询中）→ loading 占位；
+                        // 非 null（有旧数据或错误）→ 显示旧内容，刷新查询无感。
+                        isLoading: _usages[p.id] == null,
+                        // 下次触发提示（全局共享同一值），显示在每个用量框 legend 后。
+                        nextTriggerText: _nextTriggerText,
+                      ),
+                    )
+                    .toList(),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -36,7 +36,9 @@ class WindowController with WindowListener {
         size: Size(width, height),
         minimumSize: Size(width, 80),
         center: true,
-        titleBarStyle: TitleBarStyle.normal,
+        // 隐藏系统标题栏：自绘右侧 4 按钮（置顶/设置/最小化/关闭），整个 mini 界面
+        // 可拖动（onPanStart → startDragging）。normal 会在 Windows 上保留系统标题栏。
+        titleBarStyle: TitleBarStyle.hidden,
       ),
       () async {
         await windowManager.show();
@@ -57,6 +59,12 @@ class WindowController with WindowListener {
 
   /// 开始拖动窗口（无系统标题栏时，由自定义手势区触发）。
   Future<void> startDragging() => windowManager.startDragging();
+
+  /// 最小化窗口到任务栏。
+  Future<void> minimize() => windowManager.minimize();
+
+  /// 关闭窗口 = 退出应用（主窗口关闭按钮）。
+  Future<void> close() => windowManager.close();
 
   /// 计算应使用的透明度：focused 或放大态强制 → 1.0，否则 0.9。纯函数便于单测。
   static double opacityFor({

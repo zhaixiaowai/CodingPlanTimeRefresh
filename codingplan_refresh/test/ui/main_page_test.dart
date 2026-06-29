@@ -7,7 +7,8 @@ import 'package:codingplan_refresh/services/llm_service.dart';
 import 'package:codingplan_refresh/services/localization_service.dart';
 import 'package:codingplan_refresh/services/log_service.dart';
 import 'package:codingplan_refresh/ui/main_page.dart';
-import 'package:codingplan_refresh/ui/widgets/config_panel.dart';
+// T4: ConfigPanel 入口测试已停用，import 暂注释避免 unused 警告（Task 5 恢复）。
+// import 'package:codingplan_refresh/ui/widgets/config_panel.dart';
 import 'package:codingplan_refresh/ui/widgets/usage_frame.dart';
 import 'package:codingplan_refresh/platform/window_controller.dart';
 
@@ -30,6 +31,10 @@ class FakeWindowController extends WindowController {
   int shrinkCalls = 0;
   int forcedActiveCalls = 0;
   List<bool> forcedValues = [];
+  // T4: minimize/close/startDragging 调用计数。
+  int minimizeCalls = 0;
+  int closeCalls = 0;
+  int startDraggingCalls = 0;
 
   @override
   Future<void> setup({
@@ -75,6 +80,15 @@ class FakeWindowController extends WindowController {
 
   @override
   Future<void> center() async {}
+
+  @override
+  Future<void> minimize() async => minimizeCalls++;
+
+  @override
+  Future<void> close() async => closeCalls++;
+
+  @override
+  Future<void> startDragging() async => startDraggingCalls++;
 }
 
 void main() {
@@ -119,49 +133,15 @@ void main() {
     expect(find.text('未知厂商，不支持用量查询'), findsNWidgets(2));
   });
 
-  testWidgets('齿轮按钮点击 → 打开 ConfigPanel，无「手动触发」菜单项', (tester) async {
-    final window = FakeWindowController();
-    await tester.pumpWidget(
-      buildApp(
-        config: AppConfig(
-          providers: [
-            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-          ],
-        ),
-        window: window,
-      ),
-    );
-    await tester.pump();
-    // 顶部齿轮图标按钮。
-    await tester.tap(find.byIcon(Icons.settings));
-    await tester.pumpAndSettle();
-    expect(find.byType(ConfigPanel), findsOneWidget);
-    // 不存在「手动触发大模型」菜单项（已删 ☰ 菜单）。
-    expect(find.text('手动触发大模型'), findsNothing);
-  });
-
-  testWidgets('置顶 checkbox → 触发 window.setAlwaysOnTop + save', (tester) async {
-    final window = FakeWindowController();
-    await tester.pumpWidget(
-      buildApp(
-        config: AppConfig(
-          providers: [
-            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-          ],
-          isAlwaysOnTop: false,
-        ),
-        window: window,
-      ),
-    );
-    await tester.pump();
-    expect(window.alwaysOnTop, isNull);
-    expect(find.byType(Checkbox), findsOneWidget);
-    await tester.tap(find.byType(Checkbox));
-    await tester.pump();
-    // checkbox 切换后应调用 setAlwaysOnTop(true)。
-    expect(window.alwaysOnTop, isTrue);
-    expect(window.setAlwaysOnTopCalls, greaterThanOrEqualTo(1));
-  });
+  // T4: 设置按钮本任务 disabled（Task 5 接 settingsOpener 走新窗口后重写）。
+  // 置顶由 Checkbox 改为 IconButton 图标互切（见下方 T4 新测试）。原「齿轮按钮点击 →
+  // 打开 ConfigPanel」「置顶 checkbox」两个测试用例覆盖的入口已变化，注释删除。
+  // testWidgets('齿轮按钮点击 → 打开 ConfigPanel，无「手动触发」菜单项', (tester) async {
+  //   ...
+  // });
+  // testWidgets('置顶 checkbox → 触发 window.setAlwaysOnTop + save', (tester) async {
+  //   ...
+  // });
 
   testWidgets('未知厂商 url：_providerFor 返回 null，无 provider 调用', (tester) async {
     final window = FakeWindowController();
@@ -184,118 +164,25 @@ void main() {
     expect(find.text('未知厂商，不支持用量查询'), findsOneWidget);
   });
 
-  // ===== T8 放大态测试 =====
-
+  // ===== T8 放大态测试（T4 临时停用）=====
+  // 设置按钮本任务 disabled（onPressed:null），3 个放大态测试都靠 tap(Icons.settings)
+  // 进入放大态——入口已断，测试会失败。放大态代码本身保留（_openEnlarged 等），
+  // Task 5 设置走新窗口后会重写这组测试。整体块注释保留待恢复参考。
+  /*
   testWidgets('齿轮「设置」→ 放大态 + 显示 ConfigPanel', (tester) async {
-    final window = FakeWindowController();
-    await tester.pumpWidget(
-      buildApp(
-        config: AppConfig(
-          providers: [
-            ProviderConfig(
-              id: 'p1',
-              name: '智谱',
-              apiUrl: 'https://x',
-              apiKey: 'k',
-            ),
-          ],
-        ),
-        window: window,
-      ),
-    );
-    await tester.pump();
-    await tester.tap(find.byIcon(Icons.settings));
-    await tester.pumpAndSettle();
-    expect(window.enlargeCalls, 1);
-    expect(find.byType(ConfigPanel), findsOneWidget);
-    // mini 态的 UsageFrame 应消失。
-    expect(find.byType(UsageFrame), findsNothing);
+    ...
   });
 
   testWidgets('ConfigPanel 保存后 → _results/_usages 同步 + 缩回 mini', (
     tester,
   ) async {
-    final window = FakeWindowController();
-    final dir = Directory.systemTemp.createTempSync('cfg_');
-    try {
-      final cs = ConfigService(dir);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MainPage(
-            config: AppConfig(
-              providers: [
-                ProviderConfig(
-                  id: 'p1',
-                  name: '智谱',
-                  apiUrl: 'https://x',
-                  apiKey: 'k',
-                ),
-                ProviderConfig(
-                  id: 'p2',
-                  name: '火山',
-                  apiUrl: 'https://y',
-                  apiKey: 'k',
-                ),
-              ],
-            ),
-            configService: cs,
-            llm: LlmService(LogService(dir)),
-            log: LogService(dir),
-            l10n: LocalizationService()..initialize('zh'),
-            window: window,
-          ),
-        ),
-      );
-      await tester.pump();
-      // 进设置放大态。
-      await tester.tap(find.byIcon(Icons.settings));
-      await tester.pumpAndSettle();
-
-      // 删除 p2（点其「删除」→ 确认）。
-      await tester.tap(find.text('删除').last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('确认'));
-      await tester.pumpAndSettle();
-      // 点保存。
-      await tester.tap(find.text('保存'));
-      await tester.pumpAndSettle();
-
-      // 应缩回（shrinkToContent 被调用）。
-      expect(window.shrinkCalls, greaterThanOrEqualTo(1));
-      // mini 态只剩 1 个 UsageFrame（p2 已删）。
-      expect(find.byType(UsageFrame), findsOneWidget);
-      // 配置文件应持久化（含 1 个 provider）。
-      final saved = cs.load();
-      expect(saved.providers.length, 1);
-      expect(saved.providers.first.id, 'p1');
-    } finally {
-      dir.deleteSync(recursive: true);
-    }
+    ...
   });
 
   testWidgets('ConfigPanel 取消按钮 → 缩回 mini', (tester) async {
-    final window = FakeWindowController();
-    await tester.pumpWidget(
-      buildApp(
-        config: AppConfig(
-          providers: [
-            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-          ],
-        ),
-        window: window,
-      ),
-    );
-    await tester.pump();
-    await tester.tap(find.byIcon(Icons.settings));
-    await tester.pumpAndSettle();
-    expect(find.byType(ConfigPanel), findsOneWidget);
-    // 点取消（ConfigPanel 内「取消」按钮，文案 cancel=取消）。
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
-    expect(window.shrinkCalls, greaterThanOrEqualTo(1));
-    expect(find.byType(ConfigPanel), findsNothing);
-    expect(find.byType(UsageFrame), findsOneWidget);
+    ...
   });
+  */
 
   // ===== mini 高度自适应回归测试 =====
 
@@ -328,30 +215,83 @@ void main() {
     expect(window.lastWidth, ConfigService.expandedWidth);
   });
 
-  // ===== T8 放大态强制全显接线 =====
-
+  // ===== T8 放大态强制全显接线（T4 临时停用：入口已断，见上方说明）=====
+  /*
   testWidgets('打开放大态 → setOpacityForcedActive(true)，关闭 → false', (
     tester,
   ) async {
+    ...
+  });
+  */
+
+  // ===== T4 顶部栏 4 按钮 + 全界面拖动 =====
+
+  testWidgets('顶部栏：最小化/关闭按钮触发 window 控制', (tester) async {
     final window = FakeWindowController();
     await tester.pumpWidget(
       buildApp(
         config: AppConfig(
-          providers: [
-            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-          ],
+          providers: [ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k')],
         ),
         window: window,
       ),
     );
     await tester.pump();
-    await tester.tap(find.byIcon(Icons.settings));
-    await tester.pumpAndSettle();
-    // 打开放大态 → 强制全显。
-    expect(window.forcedValues, contains(true));
-    // 关闭（取消）→ 恢复按焦点。
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
-    expect(window.forcedValues, contains(false));
+    // 最小化（horizontal_rule 图标）。
+    await tester.tap(find.byIcon(Icons.horizontal_rule));
+    await tester.pump();
+    expect(window.minimizeCalls, 1);
+    // 关闭（close 图标）。
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pump();
+    expect(window.closeCalls, 1);
+  });
+
+  testWidgets(
+    '置顶按钮：未置顶显示 push_pin_outlined，点击切 push_pin + setAlwaysOnTop(true)',
+    (tester) async {
+      final window = FakeWindowController();
+      await tester.pumpWidget(
+        buildApp(
+          config: AppConfig(
+            providers: [
+              ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+            ],
+            isAlwaysOnTop: false,
+          ),
+          window: window,
+        ),
+      );
+      await tester.pump();
+      expect(find.byIcon(Icons.push_pin_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.push_pin), findsNothing);
+      await tester.tap(find.byIcon(Icons.push_pin_outlined));
+      await tester.pump();
+      expect(window.alwaysOnTop, isTrue);
+      expect(find.byIcon(Icons.push_pin), findsOneWidget);
+      expect(find.byIcon(Icons.push_pin_outlined), findsNothing);
+    },
+  );
+
+  testWidgets('mini 界面拖动：拖动手势触发 startDragging', (tester) async {
+    final window = FakeWindowController();
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k')],
+        ),
+        window: window,
+      ),
+    );
+    await tester.pump();
+    // 在顶部栏（SizedBox height:22）的左侧留白区发起 dragFrom：该区为 Row 的
+    // MainAxisAlignment.end 留白，无子控件，避免与 IconButton/UsageFrame 命中竞争。
+    // dragFrom 跨过 touch slop 触发外层 GestureDetector.onPanStart → startDragging。
+    final topBarBox = tester.getRect(find.byType(SizedBox).first);
+    await tester.dragFrom(
+      Offset(topBarBox.left + 4, topBarBox.top + 11),
+      const Offset(20, 20),
+    );
+    expect(window.startDraggingCalls, greaterThanOrEqualTo(1));
   });
 }
