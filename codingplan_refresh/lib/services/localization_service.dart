@@ -42,6 +42,8 @@ class LocalizationService {
     'settings': {'zh': '设置', 'en': 'Settings'},
     // PinLabel
     'pinLabel': {'zh': '置顶', 'en': 'Pin'},
+    // TriggerTimesLabel —— 触发时刻分区标题
+    'triggerTimesLabel': {'zh': '触发时刻（整点）', 'en': 'Trigger Hours'},
     // LanguageLabel
     'languageLabel': {'zh': '语言', 'en': 'Language'},
     // LanguageAuto

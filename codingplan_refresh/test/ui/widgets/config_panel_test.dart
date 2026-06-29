@@ -42,4 +42,26 @@ void main() {
     await tester.pump();
     expect(saved.providers.length, 1);
   });
+
+  testWidgets('触发时刻网格：切换并保存写回 triggerHours', (tester) async {
+    final l10n = LocalizationService()..initialize('zh');
+    AppConfig? saved;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ConfigPanel(
+      initial: AppConfig(providers: [ProviderConfig(id: 'a', name: '智谱')]),
+      l10n: l10n,
+      onSave: (next, _) => saved = next,
+      onCancel: () {},
+    ))));
+    await tester.pump();
+    // 默认勾选 1/7/13/19。取消 7、勾选 8。
+    // 每个时刻按钮显示该小时数字。
+    await tester.tap(find.text('7').first);
+    await tester.pump();
+    await tester.tap(find.text('8').first);
+    await tester.pump();
+    await tester.tap(find.text('保存'));
+    await tester.pump();
+    expect(saved!.triggerHours, containsAll([1, 8, 13, 19]));
+    expect(saved!.triggerHours, isNot(contains(7)));
+  });
 }

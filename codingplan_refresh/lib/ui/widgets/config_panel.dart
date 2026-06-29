@@ -31,6 +31,8 @@ class _ConfigPanelState extends State<ConfigPanel> {
   late int _selectedIdx; // 当前编辑的 provider 索引
   late int _langIndex; // 0 auto 1 zh 2 en
   late TextEditingController _name, _url, _key, _model;
+  // 触发时刻（整点 0-23）勾选状态：从 initial.triggerHours 初始化，保存时写回。
+  late Set<int> _triggerHours;
   int _idCounter = 0;
   // 挂在 SingleChildScrollView 的 child Column 上：该 Column 在无界主轴下
   // size.height = 内容自然高（无 Expanded/Spacer），PostFrame 测量它 + padding
@@ -50,6 +52,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
     _key = TextEditingController();
     _model = TextEditingController();
     if (_selectedIdx >= 0) _loadFields(_selectedIdx);
+    _triggerHours = Set<int>.from(widget.initial.triggerHours);
   }
 
   @override
@@ -113,6 +116,18 @@ class _ConfigPanelState extends State<ConfigPanel> {
                 _langBtn(1, l.t('languageZh')),
                 _langBtn(2, l.t('languageEn')),
               ],
+            ),
+            const Divider(color: Color(0xFF555555), height: 16),
+            // 触发时刻（整点）网格勾选：24 个小时按钮，选中高亮。
+            Text(
+              l.t('triggerTimesLabel'),
+              style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 11),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [for (int h = 0; h < 24; h++) _hourToggle(h)],
             ),
             const Divider(color: Color(0xFF555555), height: 16),
             // provider 列表（可拖动）：shrinkWrap 按实际内容高，ConstrainedBox
@@ -272,8 +287,37 @@ class _ConfigPanelState extends State<ConfigPanel> {
       isAlwaysOnTop: widget.initial.isAlwaysOnTop,
       language: lang,
       lastTriggerKeys: widget.initial.lastTriggerKeys,
+      triggerHours: _triggerHours.toList()..sort(),
     );
     widget.onSave(next, lang != (widget.initial.language ?? 'auto'));
+  }
+
+  /// 单个小时勾选按钮：GestureDetector + 固定尺寸 Container，选中蓝(0xFF007ACC)/
+  /// 未选深灰(0xFF3C3C3C)，居中显示该小时数字。
+  Widget _hourToggle(int h) {
+    final sel = _triggerHours.contains(h);
+    return GestureDetector(
+      onTap: () => setState(() {
+        if (sel) {
+          _triggerHours.remove(h);
+        } else {
+          _triggerHours.add(h);
+        }
+      }),
+      child: Container(
+        width: 28,
+        height: 22,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: sel ? const Color(0xFF007ACC) : const Color(0xFF3C3C3C),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Text(
+          '$h',
+          style: const TextStyle(color: Colors.white, fontSize: 10),
+        ),
+      ),
+    );
   }
 
   void _confirmDelete(int idx) {
