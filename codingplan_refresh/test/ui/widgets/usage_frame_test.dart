@@ -4,42 +4,55 @@ import 'package:codingplan_refresh/models/usage_info.dart';
 import 'package:codingplan_refresh/services/localization_service.dart';
 import 'package:codingplan_refresh/ui/widgets/usage_frame.dart';
 
+String _reset(int? ms) {
+  if (ms == null) return '';
+  // 复用 resetToday 形态：「重置 HH:mm」
+  final dt = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toLocal();
+  return '重置 ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+}
+
 void main() {
-  testWidgets('成功多行：显示标题 + 各行 label', (tester) async {
+  testWidgets('成功行：进度条内嵌百分比 + 重置时间右侧', (tester) async {
     final l10n = LocalizationService()..initialize('zh');
     final result = UsageResult('智谱 Pro', [
-      UsageItem('token5h', 34, null),
+      UsageItem('token5h', 34, 1782478364000),
       UsageItem('mcpMonthly', 12, null),
     ], null);
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: UsageFrame(result: result, l10n: l10n, resetText: (_) => ''))));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: UsageFrame(result: result, l10n: l10n, resetText: _reset)),
+    ));
     await tester.pump();
-    // legend 用 Text.rich 拼接，整段含标题；用 containing 匹配标题片段。
+    // legend 标题。
     expect(find.textContaining('智谱 Pro'), findsOneWidget);
+    // label。
     expect(find.text('Token(5H)'), findsOneWidget);
     expect(find.text('MCP(月)'), findsOneWidget);
-    expect(find.text('34%'), findsOneWidget);
+    // 百分比内嵌进度条（textContaining 匹配）。
+    expect(find.textContaining('34%'), findsOneWidget);
+    expect(find.textContaining('12%'), findsOneWidget);
+    // 有重置时间的行显示「重置 HH:mm」；无重置（mcpMonthly）不显示重置。
+    expect(find.textContaining('重置'), findsOneWidget);
   });
 
-  testWidgets('nextTriggerText 非空 → legend 标题后接「下次触发在 HH:mm」', (tester) async {
+  testWidgets('nextTriggerText 非空 → legend 标题后接提示', (tester) async {
     final l10n = LocalizationService()..initialize('zh');
     final result = UsageResult('智谱 Pro', [UsageItem('token5h', 34, null)], null);
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(body: UsageFrame(
-        result: result, l10n: l10n, resetText: (_) => '',
+        result: result, l10n: l10n, resetText: _reset,
         nextTriggerText: '下次触发在 19:00',
       )),
     ));
     await tester.pump();
-    // 拼成「智谱 Pro : 下次触发在 19:00」
     expect(find.textContaining('智谱 Pro : 下次触发在 19:00'), findsOneWidget);
   });
 
-  testWidgets('nextTriggerText 空 → 仅标题，不出现「下次触发」', (tester) async {
+  testWidgets('nextTriggerText 空 → 仅标题', (tester) async {
     final l10n = LocalizationService()..initialize('zh');
     final result = UsageResult('智谱 Pro', [UsageItem('token5h', 34, null)], null);
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(body: UsageFrame(
-        result: result, l10n: l10n, resetText: (_) => '', nextTriggerText: '',
+        result: result, l10n: l10n, resetText: _reset, nextTriggerText: '',
       )),
     ));
     await tester.pump();
@@ -50,7 +63,9 @@ void main() {
   testWidgets('失败：显示 errorMessage', (tester) async {
     final l10n = LocalizationService()..initialize('zh');
     final result = const UsageResult('火山方舟', [], 'arkcli 未安装，参考 README');
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: UsageFrame(result: result, l10n: l10n, resetText: (_) => ''))));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: UsageFrame(result: result, l10n: l10n, resetText: _reset)),
+    ));
     await tester.pump();
     expect(find.text('arkcli 未安装，参考 README'), findsOneWidget);
   });

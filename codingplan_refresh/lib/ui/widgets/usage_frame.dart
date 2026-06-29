@@ -127,32 +127,65 @@ class UsageFrame extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 80,
+            width: 70,
             child: Text(
               l10n.t(it.labelKey),
+              textAlign: TextAlign.right,
               style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
             ),
           ),
-          Expanded(
-            child: Center(
-              child: Text(
-                reset == null ? '' : resetText(reset),
-                style: const TextStyle(color: Color(0xFF999999), fontSize: 11),
+          const SizedBox(width: 6),
+          Expanded(child: _progressBar(pct)),
+          const SizedBox(width: 6),
+          // 重置时间：null 不显示（不占位）。
+          if (reset != null)
+            Text(
+              '⟳${resetText(reset)}',
+              style: const TextStyle(color: Color(0xFF999999), fontSize: 10),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 进度条 + 内嵌百分比文字（Stack：灰底条 + pct 着色填充 + 居中百分比）。
+  Widget _progressBar(double pct) {
+    final c = pct.clamp(0.0, 100.0);
+    return SizedBox(
+      height: 16,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 底层灰条。
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF3F3F46),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          // 上层 pct 着色填充（按比例宽度）。
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: c / 100.0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: pctColor(c),
+                  borderRadius: BorderRadius.circular(3),
+                ),
               ),
             ),
           ),
-          SizedBox(
-            width: 50,
-            child: Text(
-              '${pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1)}%',
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: pctColor(pct),
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+          // 内嵌百分比文字（白色，居中于整条）。
+          Text(
+            '${c.toStringAsFixed(c == c.roundToDouble() ? 0 : 1)}%',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
