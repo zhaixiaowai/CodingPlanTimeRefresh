@@ -61,6 +61,9 @@ class WindowController with WindowListener {
       (focused || forcedActive) ? activeOpacity : inactiveOpacity;
 
   /// 应用透明度到窗口。抽出便于测试 override 记录最终 opacity（绕开 channel）。
+  ///
+  /// macOS：setOpacity 走 NSWindow setAlphaValue、焦点回调同源，理论上跨平台一致；
+  /// 但 macOS 全程未真机实测，本次以 Windows 为准，待后续验证。
   Future<void> applyOpacity(double opacity) async {
     await windowManager.setOpacity(opacity);
   }
