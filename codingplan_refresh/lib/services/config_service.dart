@@ -5,7 +5,7 @@ import 'package:codingplan_refresh/utils/aes.dart';
 
 class ConfigService {
   /// 窗口尺寸常量（与旧版 ConfigService.cs 一致）。
-  static const double expandedWidth = 280;
+  static const double expandedWidth = 260;
   static const double expandedHeight = 318;
   static const double collapsedHeight = 120;
   static const double collapsedHeightWithWeekly = 142;

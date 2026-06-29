@@ -25,8 +25,8 @@ void main() {
     // legend 标题。
     expect(find.textContaining('智谱 Pro'), findsOneWidget);
     // label。
-    expect(find.text('Token(5H)'), findsOneWidget);
-    expect(find.text('MCP(月)'), findsOneWidget);
+    expect(find.text('5H'), findsOneWidget);
+    expect(find.text('月'), findsOneWidget); // mcpMonthly label=月，resetAtMs=null 故无 (MCP) 前缀
     // 百分比内嵌进度条（textContaining 匹配）。
     expect(find.textContaining('34%'), findsOneWidget);
     expect(find.textContaining('12%'), findsOneWidget);
@@ -68,5 +68,19 @@ void main() {
     ));
     await tester.pump();
     expect(find.text('arkcli 未安装，参考 README'), findsOneWidget);
+  });
+
+  testWidgets('mcpMonthly 有重置时间 → (MCP) 前缀放重置文本最前', (tester) async {
+    final l10n = LocalizationService()..initialize('zh');
+    final result = UsageResult('智谱 Pro', [
+      UsageItem('mcpMonthly', 12, 1782478364000),
+    ], null);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: UsageFrame(result: result, l10n: l10n, resetText: _reset)),
+    ));
+    await tester.pump();
+    // mcpMonthly label=月，重置文本前加 (MCP) 标注。
+    expect(find.text('月'), findsOneWidget);
+    expect(find.textContaining('(MCP)'), findsOneWidget);
   });
 }

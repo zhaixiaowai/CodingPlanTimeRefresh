@@ -129,21 +129,24 @@ class UsageFrame extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(
-            width: 70,
-            child: Text(
-              l10n.t(it.labelKey),
-              textAlign: TextAlign.right,
-              style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
-            ),
+          // label 自然宽（省 Token 后变短，按内容自适应不强制固定宽，
+          // 避免「Token(5H)」类长前缀撑宽；softWrap:false 防英文「Month(MCP)」换行。
+          Text(
+            l10n.t(it.labelKey),
+            maxLines: 1,
+            softWrap: false,
+            style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
           ),
           const SizedBox(width: 6),
           Expanded(child: _progressBar(pct)),
           const SizedBox(width: 6),
-          // 重置时间：null 不显示（不占位）。
+          // 重置时间：null 不显示（不占位）。去掉 ⟳ 图标，保留「重置」文字。
+          // mcpMonthly 行的 (MCP) 标注放重置文本最前（避免 label 变长导致英文换行）。
           if (reset != null)
             Text(
-              '⟳${resetText(reset)}',
+              "${it.labelKey == 'mcpMonthly' ? '(MCP) ' : ''}${resetText(reset)}",
+              maxLines: 1,
+              softWrap: false,
               style: const TextStyle(color: Color(0xFF999999), fontSize: 10),
             ),
         ],
