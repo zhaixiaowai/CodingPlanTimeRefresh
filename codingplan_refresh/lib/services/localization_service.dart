@@ -101,10 +101,10 @@ class LocalizationService {
       'zh': '{0}%已使用({1} Coding Plan)',
       'en': '{0}% used ({1} Coding Plan)',
     },
-    // NextTriggerFormat —— 占位 {0:HH:mm}、{1}、{2}
+    // NextTriggerFormat —— 占位 {0:HH:mm}（仅时刻，不显示倒计时避免过长）
     'nextTriggerFormat': {
-      'zh': '下次触发大模型: {0:HH:mm} ({1}分{2}秒后)',
-      'en': 'Next trigger: {0:HH:mm} ({1}m{2}s)',
+      'zh': '下次触发大模型: {0:HH:mm}',
+      'en': 'Next trigger: {0:HH:mm}',
     },
     // ResetTextToday —— 占位 {0:HH:mm}
     'resetToday': {'zh': '重置 {0:HH:mm}', 'en': 'Reset {0:HH:mm}'},

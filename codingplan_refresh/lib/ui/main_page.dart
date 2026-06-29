@@ -130,7 +130,11 @@ class _MainPageState extends State<MainPage> {
       final provider = _providerFor(p);
       if (provider == null) {
         // 未知厂商：同步置错误结果，无需 async。
-        _usages[p.id] = const UsageResult('未知厂商', [], 'unknownVendorUnsupported');
+        _usages[p.id] = const UsageResult(
+          '未知厂商',
+          [],
+          'unknownVendorUnsupported',
+        );
         continue;
       }
       // 立即启动（IIFE）并行查询；每个完成即 setState 显示，先到先显。
@@ -228,14 +232,9 @@ class _MainPageState extends State<MainPage> {
       }
       return;
     }
-    // 用本地化键 nextTriggerFormat（zh「下次触发大模型: HH:mm (X分Y秒后)」/
-    // en「Next trigger: HH:mm (XmYs)」）：{0:HH:mm}=下次时刻、{1}=剩余分、{2}=剩余秒。
-    final dur = next.difference(now);
-    final text = widget.l10n.t('nextTriggerFormat').fmt([
-      next,
-      dur.inMinutes,
-      dur.inSeconds % 60,
-    ]);
+    // 用本地化键 nextTriggerFormat（zh「下次触发大模型: HH:mm」/en「Next trigger: HH:mm」）：
+    // 仅显示时刻，不显示倒计时（曾带「(X分Y秒后)」过长）。
+    final text = widget.l10n.t('nextTriggerFormat').fmt([next]);
     if (text != _nextTriggerText) {
       _nextTriggerText = text;
       if (mounted) setState(() {});
