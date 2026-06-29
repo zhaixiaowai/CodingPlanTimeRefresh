@@ -8,7 +8,15 @@ import 'package:window_manager/window_manager.dart';
 /// 注意：`window_manager` 包内部用到 `Size`（来自 `dart:ui`）但未 re-export，
 /// 故本文件显式 `import 'dart:ui' show Offset, Size;`，否则引用本类的测试/构建会因
 /// `Size`/`Offset` 未定义而编译失败。方法为普通实例方法，便于测试以子类 override 注入。
-class WindowController {
+class WindowController with WindowListener {
+  /// 失焦半透常量（spec §6）。
+  static const double inactiveOpacity = 0.72;
+  static const double activeOpacity = 1.0;
+  /// 放大态强制全显覆盖（放大态窗口必须看清，不受失焦半透影响）。
+  bool _forcedActive = false;
+  /// 焦点变化回调（供 MainPage 订阅做联动，如需要）。
+  void Function(bool focused)? onFocusedChanged;
+
   /// 初始化窗口：固定尺寸、居中、不可缩放、禁最大化、置顶。
   ///
   /// 不设 maximumSize——它会把窗口钳在 mini 上限（318），导致 enlarge(420×520)
@@ -39,11 +47,53 @@ class WindowController {
         await windowManager.setMaximizable(false);
         await windowManager.setAlwaysOnTop(alwaysOnTop);
         await windowManager.setSize(Size(width, height));
+        // 失焦半透：注册焦点监听，按当前焦点设初始透明度（避启动全显后闪一下）。
+        windowManager.addListener(this);
+        await setOpacityByFocus(await isFocusedNow());
       },
     );
   }
 
   Future<void> setAlwaysOnTop(bool v) => windowManager.setAlwaysOnTop(v);
+
+  /// 计算应使用的透明度：focused 或放大态强制 → 1.0，否则 0.72。纯函数便于单测。
+  static double opacityFor({required bool focused, required bool forcedActive}) =>
+      (focused || forcedActive) ? activeOpacity : inactiveOpacity;
+
+  /// 应用透明度到窗口。抽出便于测试 override 记录最终 opacity（绕开 channel）。
+  Future<void> applyOpacity(double opacity) async {
+    await windowManager.setOpacity(opacity);
+  }
+
+  /// 当前窗口是否聚焦。抽出便于测试 override（绕开 windowManager.isFocused channel）。
+  Future<bool> isFocusedNow() async => await windowManager.isFocused();
+
+  /// 按焦点设窗口透明度：focused 或放大态强制 → 1.0，否则 0.72。
+  Future<void> setOpacityByFocus(bool focused) async {
+    await applyOpacity(opacityFor(focused: focused, forcedActive: _forcedActive));
+  }
+
+  /// 放大态强制全显（true）/ 关闭放大态恢复按焦点（false）。
+  Future<void> setOpacityForcedActive(bool forced) async {
+    _forcedActive = forced;
+    if (forced) {
+      await setOpacityByFocus(true);
+    } else {
+      await setOpacityByFocus(await isFocusedNow());
+    }
+  }
+
+  @override
+  void onWindowFocus() {
+    setOpacityByFocus(true);
+    onFocusedChanged?.call(true);
+  }
+
+  @override
+  void onWindowBlur() {
+    setOpacityByFocus(false);
+    onFocusedChanged?.call(false);
+  }
 
   /// 设置窗口尺寸。
   ///
