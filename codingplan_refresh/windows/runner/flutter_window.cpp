@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "desktop_multi_window/desktop_multi_window_plugin.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,6 +26,16 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  // desktop_multi_window：为每个新建子窗口的 engine 注册插件（generated_plugins.h 的
+  // RegisterPlugins）。子窗口是独立 Flutter engine，默认不共享主窗口的插件通道，
+  // 必须在子窗口创建回调里手动注册，否则 window_manager 等插件在设置窗口不可用。
+  // 片段照抄自 desktop_multi_window 0.3.0 README「Working with Plugins in Sub-Windows / Windows」。
+  DesktopMultiWindowSetWindowCreatedCallback([](void *controller) {
+    auto *flutter_view_controller =
+        reinterpret_cast<flutter::FlutterViewController *>(controller);
+    auto *registry = flutter_view_controller->engine();
+    RegisterPlugins(registry);
+  });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {

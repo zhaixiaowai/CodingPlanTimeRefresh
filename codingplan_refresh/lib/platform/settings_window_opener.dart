@@ -1,3 +1,5 @@
+import 'package:desktop_multi_window/desktop_multi_window.dart';
+
 /// 设置窗口打开器抽象：隔离多窗口实现（生产用 desktop_multi_window，测试用 fake）。
 ///
 /// 主窗口点「设置」调 [open] 创建独立设置窗口并进入模态；设置窗口关闭时经 [onClosed]
@@ -10,4 +12,63 @@ abstract class SettingsWindowOpener {
   /// 注册关闭回调。[saved]=true 表示用户在设置窗口点了保存（已写盘）；
   /// false 表示取消/异常关闭。回调在主窗口 engine 触发。
   void onClosed(void Function(bool saved) cb);
+}
+
+/// 跨窗口通信通道名：主窗口与设置窗口共用此 [WindowMethodChannel]。
+///
+/// desktop_multi_window 0.3.0 的 [WindowMethodChannel] 默认
+/// [ChannelMode.bidirectional]，正好配主/设置一对 engine（最多 2 个 engine 注册，
+/// 仅这对可互调）。通道是 **实例**（非静态），主/设置窗口各 `const channel = ...`。
+const settingsChannel = WindowMethodChannel('settings_channel');
+
+/// 关闭事件的方法名：设置窗口 invokeMethod('onClosed', {'saved': bool})，
+/// 主窗口 setMethodCallHandler 收到后取出 saved 调注册的回调。
+const settingsMethodOnClosed = 'onClosed';
+
+/// 设置窗口 engine 的 arguments 标识：主窗口创建子窗口时传 'settings'，
+/// main.dart 据此分发到设置窗口 runApp。
+const settingsWindowArguments = 'settings';
+
+/// 生产实现：用 desktop_multi_window 创建独立设置窗口，关闭经 [settingsChannel]
+/// 回传主窗口。
+///
+/// 实现要点（基于 desktop_multi_window 0.3.0 真实 API 核对，pub cache 源码确认）：
+/// - `WindowMethodChannel` 是 **实例类**，`invokeMethod`/`setMethodCallHandler` 为
+///   实例方法（非静态）。
+/// - `WindowController.create(WindowConfiguration(arguments:'settings', hiddenAtLaunch:true))`
+///   返回子窗口控制器；`controller.show()` 显示。
+/// - 子窗口的尺寸/居中/关闭由 **设置窗口 engine 内的 window_manager** 自管（见
+///   main.dart 的 `_runSettingsWindow`，用 `waitUntilReadyToShow` 设 420×560/居中/
+///   无系统标题栏，onSave/onCancel 调 `notifyClosedAndClose`）。
+///   控制器本身无 setSize/center 方法，故主窗口不直接设子窗口大小。
+class DesktopMultiWindowSettingsOpener implements SettingsWindowOpener {
+  void Function(bool saved)? _cb;
+
+  @override
+  Future<void> open() async {
+    // 主窗口侧：注册方法处理器，收设置窗口回传的 onClosed。
+    await settingsChannel.setMethodCallHandler((call) async {
+      if (call.method == settingsMethodOnClosed) {
+        final args = call.arguments;
+        final saved = args is Map && args['saved'] == true;
+        _cb?.call(saved);
+      }
+      return null;
+    });
+
+    // 创建设置窗口（hiddenAtLaunch 先隐藏，由子窗口 engine 内 window_manager
+    // 设好尺寸/标题栏后再 show）。
+    final controller = await WindowController.create(
+      const WindowConfiguration(
+        arguments: settingsWindowArguments,
+        hiddenAtLaunch: true,
+      ),
+    );
+    await controller.show();
+  }
+
+  @override
+  void onClosed(void Function(bool saved) cb) {
+    _cb = cb;
+  }
 }

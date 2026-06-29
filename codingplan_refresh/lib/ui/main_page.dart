@@ -11,6 +11,7 @@ import '../services/usage_provider.dart';
 import '../services/scheduler_service.dart';
 import '../services/volc_ark_usage_provider.dart';
 import '../platform/window_controller.dart';
+import '../platform/settings_window_opener.dart';
 import 'widgets/config_panel.dart';
 import 'widgets/usage_frame.dart';
 
@@ -25,6 +26,8 @@ class MainPage extends StatefulWidget {
   final LogService log;
   final LocalizationService l10n;
   final WindowController window;
+  /// 设置窗口打开器（Task 5 接线使用；本任务仅占位保证 _App 传参可编译）。
+  final SettingsWindowOpener? settingsOpener;
   const MainPage({
     super.key,
     required this.config,
@@ -33,6 +36,7 @@ class MainPage extends StatefulWidget {
     required this.log,
     required this.l10n,
     required this.window,
+    this.settingsOpener,
   });
 
   @override
