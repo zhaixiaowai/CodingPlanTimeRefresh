@@ -18,34 +18,33 @@ class ProviderConfig {
   });
 
   factory ProviderConfig.fromJson(Map<String, dynamic> json) => ProviderConfig(
-        id: json['Id'] as String? ?? '',
-        name: json['Name'] as String? ?? '',
-        apiUrl: json['ApiUrl'] as String? ?? '',
-        apiKey: json['ApiKey'] as String? ?? '',
-        model: json['Model'] as String? ?? 'glm-5.1',
-      );
+    id: json['Id'] as String? ?? '',
+    name: json['Name'] as String? ?? '',
+    apiUrl: json['ApiUrl'] as String? ?? '',
+    apiKey: json['ApiKey'] as String? ?? '',
+    model: json['Model'] as String? ?? 'glm-5.1',
+  );
 
   Map<String, dynamic> toJson() => {
-        'Id': id,
-        'Name': name,
-        'ApiUrl': apiUrl,
-        'ApiKey': apiKey,
-        'Model': model,
-      };
+    'Id': id,
+    'Name': name,
+    'ApiUrl': apiUrl,
+    'ApiKey': apiKey,
+    'Model': model,
+  };
 
   ProviderConfig copyWith({
     String? name,
     String? apiUrl,
     String? apiKey,
     String? model,
-  }) =>
-      ProviderConfig(
-        id: id,
-        name: name ?? this.name,
-        apiUrl: apiUrl ?? this.apiUrl,
-        apiKey: apiKey ?? this.apiKey,
-        model: model ?? this.model,
-      );
+  }) => ProviderConfig(
+    id: id,
+    name: name ?? this.name,
+    apiUrl: apiUrl ?? this.apiUrl,
+    apiKey: apiKey ?? this.apiKey,
+    model: model ?? this.model,
+  );
 }
 
 /// 应用配置（多组 provider）。
@@ -59,16 +58,22 @@ class AppConfig {
   List<ProviderConfig> providers;
   bool isAlwaysOnTop;
   String? language;
+
   /// key = provider.id → 该 provider 的 LastAutoTriggerKey（定时去重，每个 provider 独立）。
   Map<String, String> lastTriggerKeys;
+
+  /// 定时触发时刻（整点 0-23）。默认 [1,7,13,19]；空列表 = 关闭定时保活。
+  List<int> triggerHours;
 
   AppConfig({
     List<ProviderConfig>? providers,
     this.isAlwaysOnTop = false,
     this.language,
     Map<String, String>? lastTriggerKeys,
-  })  : providers = providers ?? [],
-        lastTriggerKeys = lastTriggerKeys ?? {};
+    List<int>? triggerHours,
+  }) : providers = providers ?? [],
+       lastTriggerKeys = lastTriggerKeys ?? {},
+       triggerHours = triggerHours ?? const [1, 7, 13, 19];
 
   factory AppConfig.fromJson(Map<String, dynamic> json) {
     // 新格式：Providers 数组
@@ -86,6 +91,11 @@ class AppConfig {
         isAlwaysOnTop: json['IsAlwaysOnTop'] as bool? ?? false,
         language: json['Language'] as String?,
         lastTriggerKeys: ltk,
+        triggerHours:
+            (json['TriggerHours'] as List<dynamic>?)
+                ?.map((e) => (e as num).toInt())
+                .toList() ??
+            const [1, 7, 13, 19],
       );
     }
     // 旧格式（单组 ApiUrl/ApiKey/Model/...）→ 迁移为 providers[0]。
@@ -104,18 +114,18 @@ class AppConfig {
       ],
       isAlwaysOnTop: json['IsAlwaysOnTop'] as bool? ?? false,
       language: json['Language'] as String?,
-      lastTriggerKeys: {
-        id: json['LastAutoTriggerKey'] as String? ?? '',
-      },
+      lastTriggerKeys: {id: json['LastAutoTriggerKey'] as String? ?? ''},
+      triggerHours: const [1, 7, 13, 19],
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'Providers': providers.map((p) => p.toJson()).toList(),
-        'IsAlwaysOnTop': isAlwaysOnTop,
-        if (language != null) 'Language': language,
-        'LastTriggerKeys': lastTriggerKeys,
-      };
+    'Providers': providers.map((p) => p.toJson()).toList(),
+    'IsAlwaysOnTop': isAlwaysOnTop,
+    if (language != null) 'Language': language,
+    'LastTriggerKeys': lastTriggerKeys,
+    'TriggerHours': triggerHours,
+  };
 
   String toJsonString() => jsonEncode(toJson());
 }

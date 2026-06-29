@@ -6,17 +6,19 @@ void main() {
     final c = AppConfig(
       providers: [
         ProviderConfig(
-            id: 'a',
-            name: '智谱',
-            apiUrl: 'https://x',
-            apiKey: 'k',
-            model: 'glm-5.1'),
+          id: 'a',
+          name: '智谱',
+          apiUrl: 'https://x',
+          apiKey: 'k',
+          model: 'glm-5.1',
+        ),
         ProviderConfig(
-            id: 'b',
-            name: '火山',
-            apiUrl: 'https://ark',
-            apiKey: 'k2',
-            model: 'ep-1'),
+          id: 'b',
+          name: '火山',
+          apiUrl: 'https://ark',
+          apiKey: 'k2',
+          model: 'ep-1',
+        ),
       ],
       isAlwaysOnTop: true,
       language: 'zh',
@@ -53,5 +55,46 @@ void main() {
     final p2 = p.copyWith(name: 'b');
     expect(p2.id, 'x');
     expect(p2.name, 'b');
+  });
+
+  test('triggerHours 默认 [1,7,13,19]', () {
+    final c = AppConfig(providers: []);
+    expect(c.triggerHours, [1, 7, 13, 19]);
+  });
+
+  test('triggerHours 序列化往返', () {
+    final c = AppConfig(
+      providers: [ProviderConfig(id: 'a', name: 'x')],
+      triggerHours: [2, 8, 14, 20],
+    );
+    final loaded = AppConfig.fromJson(c.toJson());
+    expect(loaded.triggerHours, [2, 8, 14, 20]);
+  });
+
+  test('新格式 JSON 无 TriggerHours → 默认', () {
+    final json = <String, dynamic>{
+      'Providers': [
+        {
+          'Id': 'a',
+          'Name': 'x',
+          'ApiUrl': '',
+          'ApiKey': '',
+          'Model': 'glm-5.1',
+        },
+      ],
+      'IsAlwaysOnTop': false,
+    };
+    final c = AppConfig.fromJson(json);
+    expect(c.triggerHours, [1, 7, 13, 19]);
+  });
+
+  test('旧单组格式迁移 → triggerHours 默认', () {
+    final legacy = <String, dynamic>{
+      'ApiUrl': 'https://x',
+      'ApiKey': 'k',
+      'Model': 'glm-5.1',
+    };
+    final c = AppConfig.fromJson(legacy);
+    expect(c.triggerHours, [1, 7, 13, 19]);
   });
 }
