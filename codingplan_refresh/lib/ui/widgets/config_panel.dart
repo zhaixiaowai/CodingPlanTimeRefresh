@@ -134,7 +134,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
             // maxHeight=140（≈2.5 个 item）限高——provider 少时紧凑不留空白，超过
             // 2.5 个时按现有行为走滚动条。
             Text(
-              '配置列表',
+              l.t('configListLabel'),
               style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 11),
             ),
             const SizedBox(height: 4),
@@ -194,9 +194,9 @@ class _ConfigPanelState extends State<ConfigPanel> {
                             size: 16,
                             color: Color(0xFFAAAAAA),
                           ),
-                          label: const Text(
-                            '删除',
-                            style: TextStyle(
+                          label: Text(
+                            l.t('deleteButton'),
+                            style: const TextStyle(
                               fontSize: 12,
                               color: Color(0xFFAAAAAA),
                             ),
@@ -224,19 +224,19 @@ class _ConfigPanelState extends State<ConfigPanel> {
               onPressed: () {
                 _saveCurrentFields();
                 setState(() {
-                  final p = ProviderConfig(id: _newId(), name: '新配置');
+                  final p = ProviderConfig(id: _newId(), name: l.t('newConfigName'));
                   _providers.add(p);
                   _selectedIdx = _providers.length - 1;
                   _loadFields(_selectedIdx);
                 });
               },
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('新增', style: TextStyle(fontSize: 12)),
+              label: Text(l.t('addButton'), style: const TextStyle(fontSize: 12)),
             ),
             const Divider(color: Color(0xFF555555), height: 12),
             // 编辑表单
             if (_selectedIdx >= 0) ...[
-              _field('名称', _name),
+              _field(l.t('fieldName'), _name),
               _field(
                 'API URL',
                 _url,
@@ -324,15 +324,16 @@ class _ConfigPanelState extends State<ConfigPanel> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('确认删除', style: TextStyle(fontSize: 14)),
+        title: Text(widget.l10n.t('confirmDeleteTitle'),
+            style: const TextStyle(fontSize: 14)),
         content: Text(
-          '删除「${_providers[idx].name}」？',
+          widget.l10n.t('confirmDeleteContent').fmt([_providers[idx].name]),
           style: const TextStyle(fontSize: 12),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+            child: Text(widget.l10n.t('cancel')),
           ),
           TextButton(
             onPressed: () {
@@ -355,7 +356,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
                 // idx > _selectedIdx：删在选中项之后，_selectedIdx 与控制器均不变。
               });
             },
-            child: const Text('确认'),
+            child: Text(widget.l10n.t('confirmButton')),
           ),
         ],
       ),
@@ -363,9 +364,10 @@ class _ConfigPanelState extends State<ConfigPanel> {
   }
 
   String _vendorOf(String url) {
-    if (url.contains('bigmodel.cn')) return '智谱';
-    if (url.contains('ark.cn-beijing.volces.com')) return '火山方舟';
-    return '未知';
+    final l = widget.l10n;
+    if (url.contains('bigmodel.cn')) return l.t('zhipu');
+    if (url.contains('ark.cn-beijing.volces.com')) return l.t('volc');
+    return l.t('vendorUnknown');
   }
 
   Widget _field(

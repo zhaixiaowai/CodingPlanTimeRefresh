@@ -36,6 +36,18 @@ class LocalizationService {
     'pinLabel': {'zh': '置顶', 'en': 'Pin'},
     // TriggerTimesLabel —— 触发时刻分区标题
     'triggerTimesLabel': {'zh': '触发时刻（整点）', 'en': 'Trigger Hours'},
+    // ConfigPanel 相关文案
+    'configListLabel': {'zh': '配置列表', 'en': 'Providers'},
+    'addButton': {'zh': '新增', 'en': 'Add'},
+    'deleteButton': {'zh': '删除', 'en': 'Delete'},
+    'newConfigName': {'zh': '新配置', 'en': 'New Config'},
+    'fieldName': {'zh': '名称', 'en': 'Name'},
+    'confirmDeleteTitle': {'zh': '确认删除', 'en': 'Confirm Delete'},
+    'confirmDeleteContent': {'zh': '删除「{0}」？', 'en': 'Delete "{0}"?'},
+    'confirmButton': {'zh': '确认', 'en': 'Confirm'},
+    'zhipu': {'zh': '智谱', 'en': 'Zhipu'},
+    'volc': {'zh': '火山方舟', 'en': 'Volc Ark'},
+    'vendorUnknown': {'zh': '未知', 'en': 'Unknown'},
     // LanguageLabel
     'languageLabel': {'zh': '语言', 'en': 'Language'},
     // LanguageAuto

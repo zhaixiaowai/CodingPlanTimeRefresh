@@ -22,7 +22,7 @@ void main() {
     expect(c.lastOpacity, WindowController.activeOpacity);
   });
 
-  test('onWindowBlur → 透明度 0.72', () {
+  test('onWindowBlur → 透明度 0.82', () {
     final c = _FakeCtrl();
     c.onWindowBlur();
     expect(c.lastOpacity, WindowController.inactiveOpacity);
@@ -46,7 +46,7 @@ void main() {
     expect(c.lastOpacity, WindowController.activeOpacity);
   });
 
-  test('setOpacityForcedActive(false) 后 onWindowBlur → 恢复 0.72', () async {
+  test('setOpacityForcedActive(false) 后 onWindowBlur → 恢复 0.82', () async {
     final c = _FakeCtrl();
     await c.setOpacityForcedActive(true);
     await c.setOpacityForcedActive(false); // isFocusedNow=false → 恢复按失焦
@@ -55,8 +55,8 @@ void main() {
     expect(c.lastOpacity, WindowController.inactiveOpacity);
   });
 
-  test('透明度常量：inactive 0.72 / active 1.0', () {
-    expect(WindowController.inactiveOpacity, 0.72);
+  test('透明度常量：inactive 0.82 / active 1.0', () {
+    expect(WindowController.inactiveOpacity, 0.82);
     expect(WindowController.activeOpacity, 1.0);
   });
 

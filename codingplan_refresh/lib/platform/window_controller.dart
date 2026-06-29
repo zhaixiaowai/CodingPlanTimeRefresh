@@ -10,7 +10,7 @@ import 'package:window_manager/window_manager.dart';
 /// `Size`/`Offset` 未定义而编译失败。方法为普通实例方法，便于测试以子类 override 注入。
 class WindowController with WindowListener {
   /// 失焦半透常量（spec §6）。
-  static const double inactiveOpacity = 0.72;
+  static const double inactiveOpacity = 0.82;
   static const double activeOpacity = 1.0;
   /// 放大态强制全显覆盖（放大态窗口必须看清，不受失焦半透影响）。
   bool _forcedActive = false;
@@ -56,7 +56,7 @@ class WindowController with WindowListener {
 
   Future<void> setAlwaysOnTop(bool v) => windowManager.setAlwaysOnTop(v);
 
-  /// 计算应使用的透明度：focused 或放大态强制 → 1.0，否则 0.72。纯函数便于单测。
+  /// 计算应使用的透明度：focused 或放大态强制 → 1.0，否则 0.82。纯函数便于单测。
   static double opacityFor({required bool focused, required bool forcedActive}) =>
       (focused || forcedActive) ? activeOpacity : inactiveOpacity;
 
@@ -71,7 +71,7 @@ class WindowController with WindowListener {
   /// 当前窗口是否聚焦。抽出便于测试 override（绕开 windowManager.isFocused channel）。
   Future<bool> isFocusedNow() async => await windowManager.isFocused();
 
-  /// 按焦点设窗口透明度：focused 或放大态强制 → 1.0，否则 0.72。
+  /// 按焦点设窗口透明度：focused 或放大态强制 → 1.0，否则 0.82。
   Future<void> setOpacityByFocus(bool focused) async {
     await applyOpacity(opacityFor(focused: focused, forcedActive: _forcedActive));
   }
