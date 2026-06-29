@@ -129,13 +129,15 @@ class UsageFrame extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // label 自然宽（省 Token 后变短，按内容自适应不强制固定宽，
-          // 避免「Token(5H)」类长前缀撑宽；softWrap:false 防英文「Month(MCP)」换行。
-          Text(
-            l10n.t(it.labelKey),
-            maxLines: 1,
-            softWrap: false,
-            style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+          // label 固定宽（等宽对齐：每行进度条左端齐），softWrap:false 防英文「Week」换行。
+          SizedBox(
+            width: 36,
+            child: Text(
+              l10n.t(it.labelKey),
+              maxLines: 1,
+              softWrap: false,
+              style: const TextStyle(color: Color(0xFF888888), fontSize: 12),
+            ),
           ),
           const SizedBox(width: 6),
           Expanded(child: _progressBar(pct)),
