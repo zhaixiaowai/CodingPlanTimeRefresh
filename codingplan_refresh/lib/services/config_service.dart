@@ -6,10 +6,7 @@ import 'package:codingplan_refresh/utils/aes.dart';
 class ConfigService {
   /// 窗口尺寸常量（与旧版 ConfigService.cs 一致）。
   static const double expandedWidth = 260;
-  // 启动初始高度：mini 内容（顶部栏 + 单框）量级，约 150。窗口首帧以此高 show，
-  // PostFrame 后 _resizeToContent 量实际内容高收缩。取接近 mini 实际高的小值，
-  // 避免旧 318（多行布局残留）首帧过长导致"先长后短"闪现。多框时测量后自动调高。
-  static const double expandedHeight = 150;
+  static const double expandedHeight = 318;
 
   /// 按语言返回 mini 窗口宽度。中文 label/reset 文本短（5H/周/月、重置 06/27 09:05），
   /// 可更窄；英文 Week/Month、Reset MM/dd HH:mm 较长需更宽。语言切换后窗口宽度随之变。
