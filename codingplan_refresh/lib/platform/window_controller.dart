@@ -55,6 +55,9 @@ class WindowController with WindowListener {
 
   Future<void> setAlwaysOnTop(bool v) => windowManager.setAlwaysOnTop(v);
 
+  /// 开始拖动窗口（无系统标题栏时，由自定义手势区触发）。
+  Future<void> startDragging() => windowManager.startDragging();
+
   /// 计算应使用的透明度：focused 或放大态强制 → 1.0，否则 0.9。纯函数便于单测。
   static double opacityFor({
     required bool focused,
