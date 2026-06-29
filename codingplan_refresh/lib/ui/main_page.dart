@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+// 置顶图标对 push_pin/offline_pin_off 在 Flutter 内置 Icons 类缺失（offline_pin_off
+// 不存在），故引 material_symbols_icons 的 Symbols 类提供这两个不同图标互切。
+import 'package:material_symbols_icons/material_symbols_icons.dart';
 import '../models/app_config.dart';
 import '../models/usage_info.dart';
 import '../services/bigmodel_usage_provider.dart';
@@ -444,8 +447,9 @@ class _MainPageState extends State<MainPage> {
   /// 整个 mini body 在外层已包 GestureDetector(onPanStart: startDragging)，按钮作为
   /// 子节点 tap 优先命中，留白/用量框区域可拖动窗口。
   ///
-  /// 置顶：两个不同图标互切（push_pin_outlined 未置顶 / push_pin 已置顶），**都灰色**
-  /// 不变色（用户决策：不用高亮蓝区分，避免视觉噪音）。
+  /// 置顶：两个不同图标互切（offline_pin_off 未置顶 / push_pin 已置顶），**都灰色**
+  /// 不变色（用户决策：不用高亮蓝区分，避免视觉噪音）。两个图标来自 material_symbols_icons
+  /// 的 Symbols 类（Flutter 内置 Icons 无 offline_pin_off）。
   Widget _buildTopBar() {
     final l = widget.l10n;
     final pinned = _config.isAlwaysOnTop;
@@ -455,14 +459,14 @@ class _MainPageState extends State<MainPage> {
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // 置顶：未置顶用 push_pin_outlined，已置顶用 push_pin（实心）。颜色恒灰。
+          // 置顶：未置顶用 offline_pin_off，已置顶用 push_pin。颜色恒灰。
           IconButton(
             iconSize: 14,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minHeight: 22, minWidth: 22),
             tooltip: l.t('pinLabel'),
             icon: Icon(
-              pinned ? Icons.push_pin : Icons.push_pin_outlined,
+              pinned ? Symbols.push_pin : Symbols.offline_pin_off,
               color: const Color(0xFFAAAAAA),
               size: 14,
             ),

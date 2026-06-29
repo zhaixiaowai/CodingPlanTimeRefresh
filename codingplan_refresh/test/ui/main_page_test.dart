@@ -10,6 +10,8 @@ import 'package:codingplan_refresh/ui/main_page.dart';
 // T4: ConfigPanel 入口测试已停用，import 暂注释避免 unused 警告（Task 5 恢复）。
 // import 'package:codingplan_refresh/ui/widgets/config_panel.dart';
 import 'package:codingplan_refresh/ui/widgets/usage_frame.dart';
+// 置顶图标断言用 Symbols.push_pin / Symbols.offline_pin_off（与 main_page.dart 同源）。
+import 'package:material_symbols_icons/material_symbols_icons.dart';
 import 'package:codingplan_refresh/platform/window_controller.dart';
 
 /// T6 mini 多框测试：验证每 provider 一个 UsageFrame、齿轮按钮打开 ConfigPanel、
@@ -248,7 +250,7 @@ void main() {
   });
 
   testWidgets(
-    '置顶按钮：未置顶显示 push_pin_outlined，点击切 push_pin + setAlwaysOnTop(true)',
+    '置顶按钮：未置顶显示 offline_pin_off，点击切 push_pin + setAlwaysOnTop(true)',
     (tester) async {
       final window = FakeWindowController();
       await tester.pumpWidget(
@@ -263,13 +265,13 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.byIcon(Icons.push_pin_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.push_pin), findsNothing);
-      await tester.tap(find.byIcon(Icons.push_pin_outlined));
+      expect(find.byIcon(Symbols.offline_pin_off), findsOneWidget);
+      expect(find.byIcon(Symbols.push_pin), findsNothing);
+      await tester.tap(find.byIcon(Symbols.offline_pin_off));
       await tester.pump();
       expect(window.alwaysOnTop, isTrue);
-      expect(find.byIcon(Icons.push_pin), findsOneWidget);
-      expect(find.byIcon(Icons.push_pin_outlined), findsNothing);
+      expect(find.byIcon(Symbols.push_pin), findsOneWidget);
+      expect(find.byIcon(Symbols.offline_pin_off), findsNothing);
     },
   );
 
