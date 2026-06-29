@@ -12,10 +12,9 @@ import '../services/scheduler_service.dart';
 import '../services/volc_ark_usage_provider.dart';
 import '../platform/window_controller.dart';
 import 'widgets/config_panel.dart';
-import 'widgets/result_panel.dart';
 import 'widgets/usage_frame.dart';
 
-/// 主窗口（mini 态）：顶部 ☰ 菜单 + 置顶外露 + 每 provider 一个 UsageFrame 垂直排列。
+/// 主窗口（mini 态）：顶部齿轮按钮 + 置顶外露 + 每 provider 一个 UsageFrame 垂直排列。
 ///
 /// 旧 MAUI 单组 / 折叠三角 / 单一用量区在本设计中已废弃：mini 态固定显示所有
 /// provider 的用量框（ScrollView 可滚），LLL 触发与放大态由 T7/T8 接入。
@@ -66,16 +65,15 @@ class _MainPageState extends State<MainPage> {
   // 外层（SingleChildScrollView 的 child），量其完整渲染高作为窗口内容高。
   final GlobalKey _contentKey = GlobalKey();
 
-  // 放大态：true 时窗口为 420×520，_enlargedMode 决定放大区显示哪个面板。
-  // 'config' → ConfigPanel（设置）；'trigger' → ResultPanel（手动触发，替代 T7 Dialog）。
+  // 放大态：true 时窗口为 420×520，放大区固定显示 ConfigPanel（手动触发已删）。
   bool _enlarged = false;
   String? _enlargedMode;
 
-  /// 放大态客户区尺寸：宽度固定 420（设置/结果面板统一）；高度初始 520，
-  /// config 模式随后按 ConfigPanel 实际内容高收缩（消除底部空白），trigger 保持 520。
+  /// 放大态客户区尺寸：宽度固定 420；高度初始 520，随后按 ConfigPanel 实际内容高
+  /// 收缩（消除底部空白）。
   static const double _enlargedW = 420;
   static const double _enlargedInitH = 520;
-  double _lastEnlargedH = 0; // config 模式上次收缩高，>2px 阈值防抖动
+  double _lastEnlargedH = 0; // 上次收缩高，>2px 阈值防抖动
   // 下次触发时刻文本（全局触发，所有 provider 共享同一值）。每个 UsageFrame legend 后
   // 显示「<标题> : 下次触发在 HH:mm」。由 _onTriggerTick（6s）定期刷新 setState。
   String _nextTriggerText = '';
@@ -321,7 +319,8 @@ class _MainPageState extends State<MainPage> {
 
   // ===== 放大态（T8）=====
 
-  /// 打开放大态：切到 [mode]（'config' / 'trigger'）并放大窗口到 420×520。
+  /// 打开放大态：放大窗口到 420×520 并显示 ConfigPanel（[mode] 历史遗留，
+  /// 仅 'config'，手动触发已删）。
   ///
   /// 先 await enlarge（窗口先放大），再 setState 切放大态布局——避免放大态布局在
   /// 旧 mini 尺寸窗口渲染一帧被裁剪。enlarge 内会先平移到屏内再 setSize。
@@ -337,7 +336,7 @@ class _MainPageState extends State<MainPage> {
     });
   }
 
-  /// 关闭放大态：缩回 mini（保留当前位置），由放大区面板的保存/取消/关闭触发。
+  /// 关闭放大态：缩回 mini（保留当前位置），由放大区 ConfigPanel 的保存/取消触发。
   ///
   /// 先 setState 切回 mini 布局（比放大态被裁好），再用旧高 shrinkToContent 缩回，
   /// 最后排 PostFrame 重测到新内容高（修注释承诺的"修正"——配置增删 provider 后
@@ -353,8 +352,8 @@ class _MainPageState extends State<MainPage> {
     }
   }
 
-  /// ConfigPanel 内容高度变化回调：放大态 config 模式据此把窗口收缩到实际内容高，
-  /// 消除固定 520 的底部空白。>2px 阈值防抖动；非 config 模式忽略（trigger 保持 520）。
+  /// ConfigPanel 内容高度变化回调：放大态据此把窗口收缩到实际内容高，
+  /// 消除固定 520 的底部空白。>2px 阈值防抖动；非放大态忽略。
   void _onConfigHeight(double h) {
     if (!_enlarged || _enlargedMode != 'config') return;
     if ((h - _lastEnlargedH).abs() > 2) {
@@ -366,8 +365,8 @@ class _MainPageState extends State<MainPage> {
   /// ConfigPanel 保存回调：写回 _config、持久化，并同步 _results/_usages（增删 provider）。
   ///
   /// 平移 T7 concern 收尾：用户在 ConfigPanel 增删/重排 providers 后，mini 态的
-  /// UsageFrame 列表与 ResultPanel 的下拉项都依赖 `_config.providers`（已随 setState
-  /// 更新），但运行时态 `_results`/`_usages` 是按 id 索引的 Map——新增 provider 没
+  /// UsageFrame 列表依赖 `_config.providers`（已随 setState 更新），但运行时态
+  /// `_results`/`_usages` 是按 id 索引的 Map——新增 provider 没有
   /// 有对应条目会显示空、删除 provider 的残留条目会泄漏。这里按「以新 providers 为准」
   /// 对齐：新增 id 加空 ResultState、删除 id 清其 _results/_usages/lastTriggerKeys。
   void _onConfigSaved(AppConfig next, bool langChanged) {
@@ -437,7 +436,7 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  /// 顶部栏：☰ 菜单 + 置顶外露（mini 态用；放大态覆盖顶部栏，不渲染此）。
+  /// 顶部栏：齿轮按钮 + 置顶外露（mini 态用；放大态覆盖顶部栏，不渲染此）。
   /// 控件强制小尺寸：icon 14、Checkbox scale 缩放、整体 SizedBox(height:20) 锁行高
   /// （约 24 含 padding），避免 Material 默认触摸目标撑高行。
   Widget _buildTopBar() {
@@ -449,26 +448,17 @@ class _MainPageState extends State<MainPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            PopupMenuButton<String>(
+            IconButton(
               iconSize: 14,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minHeight: 20, minWidth: 20),
               tooltip: '',
-              icon: const Icon(Icons.menu, color: Color(0xFFAAAAAA), size: 14),
-              onSelected: (v) {
-                if (v == 'config') {
-                  _openEnlarged('config');
-                } else if (v == 'trigger') {
-                  _openEnlarged('trigger');
-                }
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(value: 'config', child: Text(l.t('settings'))),
-                PopupMenuItem(
-                  value: 'trigger',
-                  child: Text(l.t('manualTrigger')),
-                ),
-              ],
+              icon: const Icon(
+                Icons.settings,
+                color: Color(0xFFAAAAAA),
+                size: 14,
+              ),
+              onPressed: () => _openEnlarged('config'),
             ),
             const Spacer(),
             Transform.scale(
@@ -495,7 +485,7 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  /// mini 态：顶部栏（☰+置顶）+ 每 provider 一个 UsageFrame。
+  /// mini 态：顶部栏（齿轮+置顶）+ 每 provider 一个 UsageFrame。
   /// 不用 ScrollView——窗口高度自适应（setHeight=内容高+补偿），内容永远≤窗口，
   /// 无需滚动。直接 Column，量其完整渲染高作为窗口内容高，避免 ScrollView 的
   /// viewport 约束干扰测量（曾导致量到的 contentH 偏小、却仍出滚动条）。
@@ -535,24 +525,15 @@ class _MainPageState extends State<MainPage> {
     );
   }
 
-  /// 放大态：整个窗口铺满 ConfigPanel/ResultPanel，**覆盖顶部 ☰+置顶行**
-  /// （面板自带取消/✕ 关闭，不再外露顶部栏）。mini 态才显示 ☰+置顶。
+  /// 放大态：整个窗口铺满 ConfigPanel，**覆盖顶部齿轮+置顶行**
+  /// （面板自带取消关闭，不再外露顶部栏）。mini 态才显示齿轮+置顶。
   Widget _buildEnlarged() {
-    return _enlargedMode == 'config'
-        ? ConfigPanel(
-            initial: _config,
-            l10n: widget.l10n,
-            onSave: _onConfigSaved,
-            onCancel: _closeEnlarged,
-            onHeightChanged: _onConfigHeight,
-          )
-        : ResultPanel(
-            providers: _config.providers,
-            getText: (id) => _results[id]?.text ?? '',
-            getHeader: (id) => _results[id]?.header ?? '',
-            onTrigger: (id) => _callLlmOnce(id, manual: true),
-            onClose: _closeEnlarged,
-            l10n: widget.l10n,
-          );
+    return ConfigPanel(
+      initial: _config,
+      l10n: widget.l10n,
+      onSave: _onConfigSaved,
+      onCancel: _closeEnlarged,
+      onHeightChanged: _onConfigHeight,
+    );
   }
 }

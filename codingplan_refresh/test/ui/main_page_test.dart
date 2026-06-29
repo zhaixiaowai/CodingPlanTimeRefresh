@@ -8,11 +8,10 @@ import 'package:codingplan_refresh/services/localization_service.dart';
 import 'package:codingplan_refresh/services/log_service.dart';
 import 'package:codingplan_refresh/ui/main_page.dart';
 import 'package:codingplan_refresh/ui/widgets/config_panel.dart';
-import 'package:codingplan_refresh/ui/widgets/result_panel.dart';
 import 'package:codingplan_refresh/ui/widgets/usage_frame.dart';
 import 'package:codingplan_refresh/platform/window_controller.dart';
 
-/// T6 mini 多框测试：验证每 provider 一个 UsageFrame、☰ 菜单弹出菜单项、
+/// T6 mini 多框测试：验证每 provider 一个 UsageFrame、齿轮按钮打开 ConfigPanel、
 /// 置顶 checkbox 触发 setAlwaysOnTop。
 ///
 /// 用 [FakeWindowController]（extends WindowController override 全部平台调用）
@@ -92,16 +91,19 @@ void main() {
     );
   }
 
-  testWidgets('多 provider → 渲染多个 UsageFrame（每 provider 一个）',
-      (tester) async {
+  testWidgets('多 provider → 渲染多个 UsageFrame（每 provider 一个）', (tester) async {
     final window = FakeWindowController();
-    await tester.pumpWidget(buildApp(
-      config: AppConfig(providers: [
-        ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-        ProviderConfig(id: 'p2', apiUrl: 'https://y', apiKey: 'k'),
-      ]),
-      window: window,
-    ));
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [
+            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+            ProviderConfig(id: 'p2', apiUrl: 'https://y', apiKey: 'k'),
+          ],
+        ),
+        window: window,
+      ),
+    );
     await tester.pump();
     // 2 个 provider 应渲染 2 个 UsageFrame。
     expect(find.byType(UsageFrame), findsNWidgets(2));
@@ -109,33 +111,40 @@ void main() {
     expect(find.text('未知厂商，不支持用量查询'), findsNWidgets(2));
   });
 
-  testWidgets('☰ 菜单点击弹出「设置 / 手动触发」菜单项', (tester) async {
+  testWidgets('齿轮按钮点击 → 打开 ConfigPanel，无「手动触发」菜单项', (tester) async {
     final window = FakeWindowController();
-    await tester.pumpWidget(buildApp(
-      config: AppConfig(providers: [
-        ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-      ]),
-      window: window,
-    ));
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [
+            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+          ],
+        ),
+        window: window,
+      ),
+    );
     await tester.pump();
-    // 点击 ☰ 菜单按钮（PopupMenuButton 内的 icon）。
-    await tester.tap(find.byType(PopupMenuButton<String>));
+    // 顶部齿轮图标按钮。
+    await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
-    expect(find.text('设置'), findsOneWidget);
-    expect(find.text('手动触发大模型'), findsOneWidget);
+    expect(find.byType(ConfigPanel), findsOneWidget);
+    // 不存在「手动触发大模型」菜单项（已删 ☰ 菜单）。
+    expect(find.text('手动触发大模型'), findsNothing);
   });
 
   testWidgets('置顶 checkbox → 触发 window.setAlwaysOnTop + save', (tester) async {
     final window = FakeWindowController();
-    await tester.pumpWidget(buildApp(
-      config: AppConfig(
-        providers: [
-          ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-        ],
-        isAlwaysOnTop: false,
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [
+            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+          ],
+          isAlwaysOnTop: false,
+        ),
+        window: window,
       ),
-      window: window,
-    ));
+    );
     await tester.pump();
     expect(window.alwaysOnTop, isNull);
     expect(find.byType(Checkbox), findsOneWidget);
@@ -146,15 +155,22 @@ void main() {
     expect(window.setAlwaysOnTopCalls, greaterThanOrEqualTo(1));
   });
 
-  testWidgets('未知厂商 url：_providerFor 返回 null，无 provider 调用',
-      (tester) async {
+  testWidgets('未知厂商 url：_providerFor 返回 null，无 provider 调用', (tester) async {
     final window = FakeWindowController();
-    await tester.pumpWidget(buildApp(
-      config: AppConfig(providers: [
-        ProviderConfig(id: 'p1', apiUrl: 'https://example.com', apiKey: 'k'),
-      ]),
-      window: window,
-    ));
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [
+            ProviderConfig(
+              id: 'p1',
+              apiUrl: 'https://example.com',
+              apiKey: 'k',
+            ),
+          ],
+        ),
+        window: window,
+      ),
+    );
     await tester.pump();
     // 非 bigmodel / 非 ark → 显示「未知厂商」，不会触发 HTTP / arkcli。
     expect(find.text('未知厂商，不支持用量查询'), findsOneWidget);
@@ -162,41 +178,25 @@ void main() {
 
   // ===== T8 放大态测试 =====
 
-  testWidgets('☰ 菜单「手动触发」→ 放大态 420×520 + 显示 ResultPanel', (tester) async {
+  testWidgets('齿轮「设置」→ 放大态 + 显示 ConfigPanel', (tester) async {
     final window = FakeWindowController();
-    await tester.pumpWidget(buildApp(
-      config: AppConfig(providers: [
-        ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-      ]),
-      window: window,
-    ));
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [
+            ProviderConfig(
+              id: 'p1',
+              name: '智谱',
+              apiUrl: 'https://x',
+              apiKey: 'k',
+            ),
+          ],
+        ),
+        window: window,
+      ),
+    );
     await tester.pump();
-    expect(window.enlargeCalls, 0);
-    // 点击 ☰ → 「手动触发大模型」。
-    await tester.tap(find.byType(PopupMenuButton<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('手动触发大模型'));
-    await tester.pumpAndSettle();
-    // 应调用 enlarge(420, 520)。
-    expect(window.enlargeCalls, 1);
-    expect(window.enlargedW, 420);
-    expect(window.enlargedH, 520);
-    // 放大态应显示 ResultPanel（触发按钮文案 manualTriggerPopup）。
-    expect(find.byType(ResultPanel), findsOneWidget);
-  });
-
-  testWidgets('☰ 菜单「设置」→ 放大态 + 显示 ConfigPanel', (tester) async {
-    final window = FakeWindowController();
-    await tester.pumpWidget(buildApp(
-      config: AppConfig(providers: [
-        ProviderConfig(id: 'p1', name: '智谱', apiUrl: 'https://x', apiKey: 'k'),
-      ]),
-      window: window,
-    ));
-    await tester.pump();
-    await tester.tap(find.byType(PopupMenuButton<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('设置'));
+    await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
     expect(window.enlargeCalls, 1);
     expect(find.byType(ConfigPanel), findsOneWidget);
@@ -204,30 +204,43 @@ void main() {
     expect(find.byType(UsageFrame), findsNothing);
   });
 
-  testWidgets('ConfigPanel 保存后 → _results/_usages 同步 + 缩回 mini',
-      (tester) async {
+  testWidgets('ConfigPanel 保存后 → _results/_usages 同步 + 缩回 mini', (
+    tester,
+  ) async {
     final window = FakeWindowController();
     final dir = Directory.systemTemp.createTempSync('cfg_');
     try {
       final cs = ConfigService(dir);
-      await tester.pumpWidget(MaterialApp(
-        home: MainPage(
-          config: AppConfig(providers: [
-            ProviderConfig(id: 'p1', name: '智谱', apiUrl: 'https://x', apiKey: 'k'),
-            ProviderConfig(id: 'p2', name: '火山', apiUrl: 'https://y', apiKey: 'k'),
-          ]),
-          configService: cs,
-          llm: LlmService(LogService(dir)),
-          log: LogService(dir),
-          l10n: LocalizationService()..initialize('zh'),
-          window: window,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MainPage(
+            config: AppConfig(
+              providers: [
+                ProviderConfig(
+                  id: 'p1',
+                  name: '智谱',
+                  apiUrl: 'https://x',
+                  apiKey: 'k',
+                ),
+                ProviderConfig(
+                  id: 'p2',
+                  name: '火山',
+                  apiUrl: 'https://y',
+                  apiKey: 'k',
+                ),
+              ],
+            ),
+            configService: cs,
+            llm: LlmService(LogService(dir)),
+            log: LogService(dir),
+            l10n: LocalizationService()..initialize('zh'),
+            window: window,
+          ),
         ),
-      ));
+      );
       await tester.pump();
       // 进设置放大态。
-      await tester.tap(find.byType(PopupMenuButton<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('设置'));
+      await tester.tap(find.byIcon(Icons.settings));
       await tester.pumpAndSettle();
 
       // 删除 p2（点其「删除」→ 确认）。
@@ -252,42 +265,47 @@ void main() {
     }
   });
 
-  testWidgets('放大态关闭按钮 → 缩回 mini 保留状态', (tester) async {
+  testWidgets('ConfigPanel 取消按钮 → 缩回 mini', (tester) async {
     final window = FakeWindowController();
-    await tester.pumpWidget(buildApp(
-      config: AppConfig(providers: [
-        ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-      ]),
-      window: window,
-    ));
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [
+            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+          ],
+        ),
+        window: window,
+      ),
+    );
     await tester.pump();
-    // 进手动触发放大态。
-    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.tap(find.byIcon(Icons.settings));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('手动触发大模型'));
+    expect(find.byType(ConfigPanel), findsOneWidget);
+    // 点取消（ConfigPanel 内「取消」按钮，文案 cancel=取消）。
+    await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
-    expect(find.byType(ResultPanel), findsOneWidget);
-    // 点关闭（IconButton(Icons.close)）。
-    await tester.tap(find.byIcon(Icons.close));
-    await tester.pumpAndSettle();
-    // 应缩回，mini 态恢复 UsageFrame。
     expect(window.shrinkCalls, greaterThanOrEqualTo(1));
-    expect(find.byType(ResultPanel), findsNothing);
+    expect(find.byType(ConfigPanel), findsNothing);
     expect(find.byType(UsageFrame), findsOneWidget);
   });
 
   // ===== mini 高度自适应回归测试 =====
 
-  testWidgets('mini 高度自适应：多 provider 渲染后 setHeight 被调且高度 < 520',
-      (tester) async {
+  testWidgets('mini 高度自适应：多 provider 渲染后 setHeight 被调且高度 < 520', (
+    tester,
+  ) async {
     final window = FakeWindowController();
-    await tester.pumpWidget(buildApp(
-      config: AppConfig(providers: [
-        ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
-        ProviderConfig(id: 'p2', apiUrl: 'https://y', apiKey: 'k'),
-      ]),
-      window: window,
-    ));
+    await tester.pumpWidget(
+      buildApp(
+        config: AppConfig(
+          providers: [
+            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+            ProviderConfig(id: 'p2', apiUrl: 'https://y', apiKey: 'k'),
+          ],
+        ),
+        window: window,
+      ),
+    );
     // pump 触发首帧 + initState 末尾的 PostFrameCallback(_resizeToContent)；
     // 再 pump 一次触发 _queryAllUsage 末尾排的 PostFrameCallback（未知厂商同步完成）。
     await tester.pump();
