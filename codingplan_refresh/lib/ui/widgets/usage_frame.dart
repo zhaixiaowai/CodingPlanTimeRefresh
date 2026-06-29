@@ -18,6 +18,10 @@ class UsageFrame extends StatelessWidget {
   /// 有旧数据（items 非空或有 errorMessage）时正常显示旧内容（无感刷新）。
   final bool isLoading;
 
+  /// 下次触发提示文本（全局触发，所有 provider 共享同一值）。非空时显示在 legend 标题后，
+  /// 形如「智谱 Pro : 下次触发在 19:00」；空则不显示。
+  final String nextTriggerText;
+
   const UsageFrame({
     super.key,
     required this.result,
@@ -25,6 +29,7 @@ class UsageFrame extends StatelessWidget {
     required this.resetText,
     this.displayName,
     this.isLoading = false,
+    this.nextTriggerText = '',
   });
 
   static Color pctColor(double p) {
@@ -79,10 +84,30 @@ class UsageFrame extends StatelessWidget {
               child: Container(
                 color: const Color(0xFF2D2D30), // 遮住边框，形成 legend 缺口
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  // 优先用户输入的 displayName，但保留 vendorTitle 套餐部分（「Pro」），
-                  // 避免只替换名称时丢套餐。详见 usageDisplayTitle。
-                  usageDisplayTitle(displayName ?? '', result.vendorTitle),
+                child: Text.rich(
+                  // 标题优先用户输入的 displayName，但保留 vendorTitle 套餐部分（「Pro」）。
+                  // nextTriggerText 非空时以「 : 」分隔接在标题后，形如
+                  // 「智谱 Pro : 下次触发在 19:00」（全局触发，所有框同一时刻）。
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: usageDisplayTitle(
+                          displayName ?? '',
+                          result.vendorTitle,
+                        ),
+                      ),
+                      if (nextTriggerText.isNotEmpty) ...[
+                        const TextSpan(
+                          text: ' : ',
+                          style: TextStyle(color: Color(0xFF666666)),
+                        ),
+                        TextSpan(
+                          text: nextTriggerText,
+                          style: const TextStyle(color: Color(0xFF888888)),
+                        ),
+                      ],
+                    ],
+                  ),
                   style: const TextStyle(
                     color: Color(0xFFAAAAAA),
                     fontSize: 11,

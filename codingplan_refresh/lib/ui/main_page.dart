@@ -76,6 +76,9 @@ class _MainPageState extends State<MainPage> {
   static const double _enlargedW = 420;
   static const double _enlargedInitH = 520;
   double _lastEnlargedH = 0; // config 模式上次收缩高，>2px 阈值防抖动
+  // 下次触发时刻文本（全局触发，所有 provider 共享同一值）。每个 UsageFrame legend 后
+  // 显示「<标题> : 下次触发在 HH:mm」。由 _onTriggerTick（6s）定期刷新 setState。
+  String _nextTriggerText = '';
 
   @override
   void initState() {
@@ -89,6 +92,7 @@ class _MainPageState extends State<MainPage> {
       (_) => _queryAllUsage(),
     );
     _queryAllUsage();
+    _updateNextTrigger();
     _triggerTimer = Timer.periodic(
       const Duration(seconds: 6),
       (_) => _onTriggerTick(),
@@ -195,6 +199,9 @@ class _MainPageState extends State<MainPage> {
   /// 6 秒轮询：命中触发时段（01/07/13/19 点整）且本轮未触发 → 遍历所有
   /// providers 各自调用（per-provider 重试，互不阻塞）。
   void _onTriggerTick() {
+    // 每次轮询刷新下次触发文本（倒计时秒级变化，6s 粒度足够）。先刷新再判触发，
+    // 触发命中后的下一次 tick 文本即跳到「下个时段」。
+    _updateNextTrigger();
     final r = SchedulerService.checkTrigger(
       DateTime.now(),
       _globalTriggerKey(),
@@ -204,6 +211,29 @@ class _MainPageState extends State<MainPage> {
     widget.configService.save(_config);
     for (final p in _config.providers) {
       _callLlmWithRetry(p.id);
+    }
+  }
+
+  /// 算下次全局触发时刻 → 拼成「下次触发在 HH:mm」（无下次则空，不显示）。
+  /// 触发是全局时刻（01/07/13/19），所有 provider 共享同一值，故放每个用量框 legend 后。
+  void _updateNextTrigger() {
+    final next = SchedulerService.nextTrigger(
+      DateTime.now(),
+      _globalTriggerKey(),
+    );
+    if (next == null) {
+      if (_nextTriggerText.isNotEmpty) {
+        _nextTriggerText = '';
+        if (mounted) setState(() {});
+      }
+      return;
+    }
+    final hh = next.hour.toString().padLeft(2, '0');
+    final mm = next.minute.toString().padLeft(2, '0');
+    final text = '下次触发在 $hh:$mm';
+    if (text != _nextTriggerText) {
+      _nextTriggerText = text;
+      if (mounted) setState(() {});
     }
   }
 
@@ -493,6 +523,8 @@ class _MainPageState extends State<MainPage> {
                       // _usages[p.id]==null：从未查到过（首次查询中）→ loading 占位；
                       // 非 null（有旧数据或错误）→ 显示旧内容，刷新查询无感。
                       isLoading: _usages[p.id] == null,
+                      // 下次触发提示（全局共享同一值），显示在每个用量框 legend 后。
+                      nextTriggerText: _nextTriggerText,
                     ),
                   )
                   .toList(),
