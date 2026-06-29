@@ -75,6 +75,54 @@ CodingPlanTimeRefresh/
 └── Platforms/               # Platform-specific code
 ```
 
+## Flutter Edition (Multi-provider Refactor)
+
+This repo is undergoing a Flutter multi-provider refactor (under `codingplan_refresh/`). The MAUI edition is slated for removal later. The following describes the Flutter edition, which coexists with the MAUI edition above.
+
+### Supported Providers
+
+- **Zhipu BigModel** (bigmodel.cn): queries usage quota via HTTP.
+- **Volcengine Ark** (ark.cn-beijing.volces.com): queries usage via the local `arkcli` tool.
+
+### Volcengine Ark Usage Prerequisites
+
+Volcengine Ark usage querying relies on the official `arkcli` CLI. Install and log in first:
+
+1. Install arkcli (see https://console.volcengine.com/ark/region:cn-beijing/docs/82379/2536875 )
+2. Run `arkcli auth login` to complete login
+3. The app queries automatically via `arkcli usage plan`
+
+If not installed / not logged in, the Volcengine Ark usage frame shows "arkcli 未安装，参考 README".
+
+#### Login Credential Expiry
+
+The `arkcli` login credential (refresh_token) has an expiration. If arkcli has not been used for a long time (neither keeping the app running for periodic polling nor manually running arkcli commands), the credential may expire. The Volcengine Ark usage frame then shows:
+
+> 登录凭证已过期，请重新执行 arkcli auth login
+
+To fix it, re-run login once in the terminal:
+
+```bash
+arkcli auth login
+```
+
+After logging in, the next usage poll (within 60 seconds) resumes automatically.
+
+### Configuration (Multiple)
+
+- Main UI ☰ menu → Settings: manage multiple model configs (long-press drag to reorder, add, delete, edit).
+- Each config fills in: Name, API URL, API Key, Model (Zhipu: model name like `glm-5.1`; Volcengine: endpoint id like `ep-xxx`).
+- Provider is auto-detected from the API URL.
+
+### Build
+
+```bash
+cd codingplan_refresh
+flutter build windows --release
+```
+
+See [codingplan_refresh/README.md](codingplan_refresh/README.md) for details.
+
 ## License
 
 [MIT](LICENSE)
