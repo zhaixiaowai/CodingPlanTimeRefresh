@@ -5,8 +5,11 @@ import 'package:codingplan_refresh/utils/aes.dart';
 
 class ConfigService {
   /// 窗口尺寸常量（与旧版 ConfigService.cs 一致）。
-  static const double expandedWidth = 260;
-  static const double expandedHeight = 318;
+  static const double expandedWidth = 230;
+  // 启动初始高度：mini 内容（顶部栏+1框）量级。窗口首帧以此高 show，
+  // PostFrame 后 _resizeToContent 量实际内容高收缩。取接近 mini 实际高的小值，
+  // 避免旧 318（多行布局残留）导致"先长后短"闪现。contentHeight 始终 ≥ 80（minimumSize）。
+  static const double expandedHeight = 150;
   static const double collapsedHeight = 120;
   static const double collapsedHeightWithWeekly = 142;
 

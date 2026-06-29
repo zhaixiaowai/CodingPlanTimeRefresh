@@ -134,6 +134,7 @@ class UsageFrame extends StatelessWidget {
             width: 36,
             child: Text(
               l10n.t(it.labelKey),
+              textAlign: TextAlign.right,
               maxLines: 1,
               softWrap: false,
               style: const TextStyle(color: Color(0xFF888888), fontSize: 12),

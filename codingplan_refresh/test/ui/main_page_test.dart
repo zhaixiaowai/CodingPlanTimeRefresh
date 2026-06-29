@@ -324,8 +324,8 @@ void main() {
     // 修复前量 Scaffold（=600）会在此断言失败；修复后量内容（~120-180）通过。
     expect(window.lastHeight, lessThan(520));
     expect(window.lastHeight, greaterThan(50));
-    // 宽度固定 260。
-    expect(window.lastWidth, 260);
+    // 宽度固定 230。
+    expect(window.lastWidth, 230);
   });
 
   // ===== T8 放大态强制全显接线 =====
