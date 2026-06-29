@@ -1,4 +1,4 @@
-# mini UI 重构 + 删除手动触发 + 触发时刻可配置 设计
+# mini UI 重构 + 删除手动触发 + 触发时刻可配置 + 失焦半透 设计
 
 - **日期**：2026-06-29
 - **状态**：待审阅
@@ -12,6 +12,7 @@
 1. **删除手动触发功能**：保活由定时触发覆盖，手动触发非必需，删干净（feature 分支未推送）。
 2. **UsageFrame 重构为进度条卡片**：每项单行 = label + 进度条(内嵌百分比) + 重置时间，宽度 330→约 280，更 mini 更直观。
 3. **触发时刻可配置**：01/07/13/19 改为设置里可调（仅整点，网格勾选）。
+4. **失焦半透**：窗口非激活态透明度 0.72，激活后 1.0，降低常驻干扰感。
 
 多厂商结构、数据模型(ProviderConfig)、配置面板拖动机制、定时触发轮询框架、放大态机制**不动**。
 
@@ -90,23 +91,39 @@ MCP(月)   ▓░░░░░░░░░░░░  8% ⟳重置 07/01
 - 本地化加 `triggerTimesLabel`（zh「触发时刻（整点）」/ en「Trigger Hours」）。
 - 保存后 `_onConfigSaved` 同步 `_config.triggerHours`，下个 6s tick 立即按新时刻判定。
 
-## 6. 改动文件清单
+## 6. 失焦半透（窗口透明度随激活态）
+
+窗口非激活态透明度 0.72，激活后 1.0，降低桌面常驻的干扰感。
+
+- **API**：`window_manager` 的 `setOpacity(double)`（内部 `SetLayeredWindowAttributes`，自动加 `WS_EX_LAYERED`）+ 焦点事件 `WindowListener.onWindowFocus`/`onWindowBlur`。
+- **`WindowController` 加 `setOpacityByFocus(bool focused)`**：focused→`setOpacity(1.0)`，否则→`setOpacity(0.72)`。透明度常量 `0.72`/`1.0` 放 `WindowController` 静态常量。
+- **`main_page` 实现 `WindowListener`**：
+  - `initState`：`windowManager.addListener(this)`；启动后 `addPostFrameCallback` 调 `widget.window.setOpacityByFocus(await windowManager.isFocused())` 设初始态（避免启动默认全显后首次失焦闪一下）。
+  - `onWindowFocus()`：`widget.window.setOpacityByFocus(true)`。
+  - `onWindowBlur()`：`widget.window.setOpacityByFocus(false)`。
+  - `dispose`：`windowManager.removeListener(this)`。
+- **放大态**：放大态（打开设置面板）时窗口已被用户主动点开，应保持 `1.0`——`_openEnlarged` 内调 `setOpacityByFocus(true)`（置顶焦点态），关闭放大态时按当前焦点重设（`isFocused()`）。避免用户在设置面板里操作时窗口半透看不清。
+- **置顶态**：透明度与置顶独立，置顶时仍按焦点切换半透（不强制不透明）。
+- **macOS**：`setOpacity` 在 macOS 走 NSWindow `setAlphaValue`，`onWindowFocus`/`onWindowBlur` 同样回调，理论上跨平台一致；但 macOS 全程未实测，本次以 Windows 为准，macOS 留 TODO 验证。
+
+## 7. 改动文件清单
 
 | 文件 | 操作 |
 |---|---|
 | `lib/ui/widgets/usage_frame.dart` | `_row` 重构：进度条 Stack + 百分比内嵌 + 重置右显 |
-| `lib/ui/main_page.dart` | 顶部栏 PopupMenu→齿轮；删 trigger 分支；触发用 `_config.triggerHours` |
+| `lib/ui/main_page.dart` | 顶部栏 PopupMenu→齿轮；删 trigger 分支；触发用 `_config.triggerHours`；实现 `WindowListener` 失焦半透 |
 | `lib/ui/widgets/result_panel.dart` | **删除** |
 | `lib/models/app_config.dart` | 加 `triggerHours` 字段 + 序列化 + 迁移默认 |
 | `lib/services/scheduler_service.dart` | `checkTrigger`/`nextTrigger` 收 `List<int> hours` 参数 |
 | `lib/ui/widgets/config_panel.dart` | 加触发时刻网格勾选 UI |
+| `lib/platform/window_controller.dart` | 加 `setOpacityByFocus(bool)` + 透明度常量 |
 | `lib/services/localization_service.dart` | 删 4 个 ResultPanel key；加 `triggerTimesLabel` |
 | `test/ui/widgets/usage_frame_test.dart` | 断言 `find.text`→`find.textContaining`（百分比内嵌进度条） |
 | `test/services/scheduler_service_test.dart` | 加 hours 参数用例（默认/自定义/空列表） |
 | `test/models/app_config_test.dart` | 加 triggerHours 迁移默认/序列化用例 |
 | `test/ui/widgets/result_panel_test.dart` | 若有则删 |
 
-## 7. 风险与对策
+## 8. 风险与对策
 
 | 风险 | 对策 |
 |---|---|
@@ -116,11 +133,16 @@ MCP(月)   ▓░░░░░░░░░░░░  8% ⟳重置 07/01
 | 进度条 Stack 文字居中 | `Center` 保证居中，无风险 |
 | 空列表导致定时保活被关 | 允许（用户有意为之）；legend 下次触发文本隐藏作视觉提示 |
 | 旧 config.dat 无 TriggerHours 字段 | `fromJson` 缺失→默认 `[1,7,13,19]`，向后兼容 |
+| 启动时窗口先全显后变半透闪一下 | `initState` 的 PostFrame 先按 `isFocused()` 设初始透明度 |
+| 放大态窗口半透看不清 | `_openEnlarged` 强制 `setOpacityByFocus(true)`，关闭时按焦点重设 |
+| 失焦半透时点击窗口立刻变不透的反馈 | 这是期望行为（点击即获焦→1.0），无需额外处理 |
+| `WindowListener` 未 dispose 移除致泄漏 | `dispose` 中 `removeListener` |
 
-## 8. 非目标（本次不做）
+## 9. 非目标（本次不做）
 
 - 不改放大态机制（仍 420×520 + 屏幕边缘兼容）。
 - 不改多厂商数据模型与配置面板拖动机制。
 - 不在 mini 态显示 LLM 结果。
 - 触发时刻不支持分钟级（仅整点）。
 - 不做配置导入/导出。
+- 透明度阈值 0.72/1.0 硬编码不提供设置项（固定值）。
