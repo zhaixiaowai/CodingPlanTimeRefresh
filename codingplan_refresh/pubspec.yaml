@@ -38,7 +38,6 @@ dependencies:
   win32: ^6.3.0
   window_manager: ^0.5.1
   desktop_multi_window: ^0.3.0
-  material_symbols_icons: ^4.2951.0
 
 dev_dependencies:
   flutter_test:
