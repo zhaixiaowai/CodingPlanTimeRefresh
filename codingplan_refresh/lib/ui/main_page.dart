@@ -144,10 +144,13 @@ class _MainPageState extends State<MainPage> {
         continue;
       }
       // 立即启动（IIFE）并行查询；每个完成即 setState 显示，先到先显。
+      // 每条数据到达即排 PostFrame _resizeToContent 放大窗口（先到先放大，不必等
+      // 全部完成——否则慢 provider 会拖住先到数据的窗口高度更新）。
       futures.add(() async {
         final result = await provider.query();
         if (!mounted) return;
         setState(() => _usages[p.id] = result);
+        WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
       }());
     }
     await Future.wait(futures);
