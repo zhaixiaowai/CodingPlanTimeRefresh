@@ -56,7 +56,7 @@ class ResultState {
   bool isRetrying = false;
 }
 
-class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
+class _MainPageState extends State<MainPage> {
   late AppConfig _config;
   // key = provider.id
   final Map<String, UsageResult> _usages = {};
@@ -84,7 +84,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _config = widget.config;
     for (final p in _config.providers) {
       _results[p.id] = ResultState();
@@ -104,19 +103,9 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _triggerTimer?.cancel();
     _usageTimer?.cancel();
     super.dispose();
-  }
-
-  @override
-  void didChangeMetrics() {
-    // 窗口尺寸变化（setHeight 后平台实际更新）→ 排 PostFrame 按新尺寸重测高度。
-    // 修切回 mini 时宽从 420→260 致 Text 换行变化、高度变大，但 PostFrame 早于 async
-    // setSize 生效而漏测的问题。阈值收敛（高稳定后 didChangeMetrics 量同高，停）。
-    if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
   }
 
   /// 厂商识别 → 返回该 provider 的 UsageProvider（未知返回 null）。
@@ -377,8 +366,9 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     if ((h - _lastContentHeight).abs() > 2) {
       _lastContentHeight = h;
       widget.window.setHeight(_miniWidth(), h);
-      // setHeight 改宽/高后窗口尺寸的实际更新由 didChangeMetrics 监听重测（async
-      // setSize 的平台更新晚于 PostFrame，故此处不再排 PostFrame 复测）。
+      // setHeight 可能改变窗口宽度（如设置 420→mini 234），宽度变化致 Text 换行重排、
+      // 高度随之变。排下一帧复测按新宽度量准（收敛：宽固定后高稳定，阈值<2 停，不无限）。
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
     }
   }
 
