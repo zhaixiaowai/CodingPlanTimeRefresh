@@ -33,9 +33,9 @@ void main() {
     final l = LocalizationService();
     l.initialize('zh');
     final dt = DateTime(2026, 6, 26, 1, 5, 30);
-    // nextTriggerFormat zh = '下次触发大模型: {0:HH:mm}'（仅时刻，无倒计时）
+    // nextTriggerFormat zh = '下次触发模型: {0:HH:mm}'（仅时刻，无倒计时）
     final s = l.t('nextTriggerFormat').fmt([dt]);
-    expect(s, '下次触发大模型: 01:05');
+    expect(s, '下次触发模型: 01:05');
   });
 
   test('fmt 无格式占位直接替换 String/num', () {

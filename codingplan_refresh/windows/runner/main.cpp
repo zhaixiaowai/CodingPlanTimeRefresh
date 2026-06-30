@@ -28,7 +28,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // 再被 Dart 端 setSize 缩小时的大窗口闪现。最终精确尺寸由 window_manager 设定。
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(260, 318);
+  Win32Window::Size size(234, 318);
   if (!window.Create(L"codingplan_refresh", origin, size)) {
     return EXIT_FAILURE;
   }

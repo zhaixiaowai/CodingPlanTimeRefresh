@@ -5,7 +5,7 @@ import 'package:codingplan_refresh/utils/aes.dart';
 
 class ConfigService {
   /// 窗口尺寸常量（与旧版 ConfigService.cs 一致）。
-  static const double expandedWidth = 260;
+  static const double expandedWidth = 234;
   static const double expandedHeight = 318;
 
   /// mini 窗口宽度（统一英文版宽度 expandedWidth=260）。曾按语言区分（中文 230 /

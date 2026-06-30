@@ -103,7 +103,7 @@ class LocalizationService {
     },
     // NextTriggerFormat —— 占位 {0:HH:mm}（仅时刻，不显示倒计时避免过长）
     'nextTriggerFormat': {
-      'zh': '下次触发大模型: {0:HH:mm}',
+      'zh': '下次触发模型: {0:HH:mm}',
       'en': 'Next trigger: {0:HH:mm}',
     },
     // ResetTextToday —— 占位 {0:HH:mm}
