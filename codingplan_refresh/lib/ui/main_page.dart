@@ -98,9 +98,9 @@ class _MainPageState extends State<MainPage> {
       const Duration(seconds: 6),
       (_) => _onTriggerTick(),
     );
-    // 启动不立即 _resizeToContent：首帧时用量数据未到（loading 占位偏小），若此时量高
-    // 缩窗会偏小。保持 setup 的启动高 318，等用量数据到达后（_queryAllUsage 末尾
-    // PostFrame）量真实内容高再缩。
+    // 首帧量 loading 占位的真实高并缩窗（查询期即贴合，数据到达后 _queryAllUsage 末尾
+    // PostFrame 再放大到内容高）。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
   }
 
   @override
@@ -365,6 +365,12 @@ class _MainPageState extends State<MainPage> {
         _contentKey.currentContext?.findRenderObject() as RenderBox?;
     if (contentBox == null) return;
     final h = contentBox.size.height;
+    // 首帧 PostFrame 可能早于 _contentKey 完成 layout（size=0），跳过不缩到 0，
+    // 排下一帧重试直到量到稳定高。
+    if (h <= 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
+      return;
+    }
     if ((h - _lastContentHeight).abs() > 2) {
       _lastContentHeight = h;
       widget.window.setHeight(_miniWidth(), h);
