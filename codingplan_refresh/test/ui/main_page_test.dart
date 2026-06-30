@@ -11,8 +11,7 @@ import 'package:codingplan_refresh/ui/widgets/usage_frame.dart';
 // 置顶图标断言用 Symbols.push_pin / Symbols.offline_pin_off（与 main_page.dart 同源）。
 import 'package:material_symbols_icons/material_symbols_icons.dart';
 import 'package:codingplan_refresh/platform/window_controller.dart';
-import 'package:codingplan_refresh/platform/settings_window_opener.dart';
-import '../helpers/fake_settings_window_opener.dart';
+import 'package:codingplan_refresh/ui/widgets/config_panel.dart';
 
 /// mini 多框测试：验证每 provider 一个 UsageFrame、置顶按钮触发 setAlwaysOnTop、
 /// 设置走独立窗口（模态遮罩 + reload）。
@@ -73,11 +72,9 @@ void main() {
   tearDown(() => tmpDir.deleteSync(recursive: true));
 
   /// 构造一个最小可挂载的 MainPage（url 非 bigmodel / 非 ark → 无 provider 调用）。
-  /// [settingsOpener] 默认 FakeSettingsWindowOpener，便于模态/reload 测试注入。
   Widget buildApp({
     required AppConfig config,
     required FakeWindowController window,
-    SettingsWindowOpener? settingsOpener,
   }) {
     return MaterialApp(
       home: MainPage(
@@ -87,7 +84,6 @@ void main() {
         log: LogService(tmpDir),
         l10n: LocalizationService()..initialize('zh'),
         window: window,
-        settingsOpener: settingsOpener ?? FakeSettingsWindowOpener(),
       ),
     );
   }
@@ -170,7 +166,9 @@ void main() {
     await tester.pumpWidget(
       buildApp(
         config: AppConfig(
-          providers: [ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k')],
+          providers: [
+            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+          ],
         ),
         window: window,
       ),
@@ -217,7 +215,9 @@ void main() {
     await tester.pumpWidget(
       buildApp(
         config: AppConfig(
-          providers: [ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k')],
+          providers: [
+            ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k'),
+          ],
         ),
         window: window,
       ),
@@ -234,76 +234,36 @@ void main() {
     expect(window.startDraggingCalls, greaterThanOrEqualTo(1));
   });
 
-  // ===== Task 5: 设置走独立窗口（模态遮罩 + reload）=====
+  // ===== 设置视图原地切换（方案 B：窗口内 mini ↔ ConfigPanel）=====
 
-  testWidgets('点设置 → opener.open + 显遮罩；onClosed(false) → 移遮罩不 reload', (
-    tester,
-  ) async {
+  testWidgets('点设置 → 切到 ConfigPanel 视图；X 关闭 → 切回 mini', (tester) async {
     final window = FakeWindowController();
-    final op = FakeSettingsWindowOpener();
-    await tester.pumpWidget(buildApp(
-      config: AppConfig(
-        providers: [
-          ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k', name: '原名'),
-        ],
-      ),
-      window: window,
-      settingsOpener: op,
-    ));
-    await tester.pump();
-    // 关闭态基线：框架自带 1 个 AbsorbPointer（Navigator），不含模态。
-    final baselineAbsorbs = find.byType(AbsorbPointer).evaluate().length;
-    expect(baselineAbsorbs, 1);
-    await tester.tap(find.byIcon(Icons.settings));
-    await tester.pump();
-    expect(op.openCalls, 1);
-    // 模态遮罩生效：模态 AbsorbPointer 叠加在框架自带的之上，数量 +1。
-    expect(find.byType(AbsorbPointer), findsNWidgets(baselineAbsorbs + 1));
-    op.simulateClosed(false);
-    await tester.pump();
-    expect(find.byType(AbsorbPointer), findsNWidgets(baselineAbsorbs)); // 遮罩移除
-    expect(find.textContaining('原名'), findsWidgets); // 未 reload，原名仍在
-  });
-
-  testWidgets('onClosed(true) → reload 配置（文件改后主窗口读取新名）', (tester) async {
-    final dir = Directory.systemTemp.createTempSync('cfg5_');
-    final cs = ConfigService(dir);
-    cs.save(
-      AppConfig(
-        providers: [
-          ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k', name: '原名'),
-        ],
-      ),
-    );
-    final window = FakeWindowController();
-    final op = FakeSettingsWindowOpener();
     await tester.pumpWidget(
-      MaterialApp(
-        home: MainPage(
-          config: cs.load(),
-          configService: cs,
-          llm: LlmService(LogService(dir)),
-          log: LogService(dir),
-          l10n: LocalizationService()..initialize('zh'),
-          window: window,
-          settingsOpener: op,
+      buildApp(
+        config: AppConfig(
+          providers: [
+            ProviderConfig(
+              id: 'p1',
+              apiUrl: 'https://x',
+              apiKey: 'k',
+              name: '原名',
+            ),
+          ],
         ),
+        window: window,
       ),
     );
     await tester.pump();
-    // 模拟设置窗口写盘改名后回传 saved=true。
-    cs.save(
-      AppConfig(
-        providers: [
-          ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k', name: '新名'),
-        ],
-      ),
-    );
+    expect(find.byType(UsageFrame), findsOneWidget); // mini 态
+    expect(find.byType(ConfigPanel), findsNothing);
+    // 点设置 → 切到 ConfigPanel 视图（窗口内原地切换，非独立窗口）。
     await tester.tap(find.byIcon(Icons.settings));
     await tester.pump();
-    op.simulateClosed(true);
+    expect(find.byType(ConfigPanel), findsOneWidget);
+    // X 关闭 → 切回 mini。
+    await tester.tap(find.byIcon(Icons.close));
     await tester.pump();
-    expect(find.textContaining('新名'), findsWidgets);
-    dir.deleteSync(recursive: true);
+    expect(find.byType(ConfigPanel), findsNothing);
+    expect(find.byType(UsageFrame), findsOneWidget);
   });
 }

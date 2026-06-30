@@ -14,16 +14,14 @@ import '../services/usage_provider.dart';
 import '../services/scheduler_service.dart';
 import '../services/volc_ark_usage_provider.dart';
 import '../platform/window_controller.dart';
-import '../platform/settings_window_opener.dart';
+import 'widgets/config_panel.dart';
 import 'widgets/usage_frame.dart';
 
-/// 主窗口（mini 态）：顶部 4 按钮（置顶图标互切 / 设置 / 最小化 / 关闭）+ 每 provider
-/// 一个 UsageFrame 垂直排列。
+/// 主窗口：mini 态（顶部 4 按钮 + 各 provider 用量框）与设置态（ConfigPanel）原地切换。
 ///
-/// 设置按钮（齿轮）经 [settingsOpener] 打开独立设置窗口，并进入模态遮罩（半透黑 +
-/// AbsorbPointer 禁用主窗口交互）。设置窗口关闭回传 saved：true → reload 配置
-/// （[_applyConfig]），false → 仅移遮罩不 reload。放大态（旧 ConfigPanel 内嵌）
-/// 已由独立设置窗口取代，全组移除。
+/// 设置按钮把主窗口内容从 mini 切到 ConfigPanel 视图（窗口放大到 420×560），
+/// 保存→[_applyConfig] 应用新配置 + 切回 mini，取消/X→切回 mini。单窗口机制
+/// （window_manager 正式版），无多窗口依赖。
 class MainPage extends StatefulWidget {
   final AppConfig config;
   final ConfigService configService;
@@ -31,8 +29,6 @@ class MainPage extends StatefulWidget {
   final LogService log;
   final LocalizationService l10n;
   final WindowController window;
-  /// 设置窗口打开器（生产为 desktop_multi_window 实现，测试注入 fake）。
-  final SettingsWindowOpener settingsOpener;
   const MainPage({
     super.key,
     required this.config,
@@ -41,7 +37,6 @@ class MainPage extends StatefulWidget {
     required this.log,
     required this.l10n,
     required this.window,
-    required this.settingsOpener,
   });
 
   @override
@@ -70,8 +65,11 @@ class _MainPageState extends State<MainPage> {
   Timer? _triggerTimer;
   double _lastContentHeight = 0;
 
-  // 设置窗口打开期间主窗口模态遮罩（半透黑 + AbsorbPointer 禁用交互）。
-  bool _settingsOpen = false;
+  // 当前视图：'mini'（用量框）| 'settings'（ConfigPanel 原地切换）。
+  String _view = 'mini';
+  // 设置视图固定客户区尺寸（容纳 ConfigPanel）。
+  static const double _settingsW = 420;
+  static const double _settingsH = 560;
 
   // 高度自适应测量键：挂在 mini 的整个内容（topBar + 各 UsageFrame + padding）
   // 外层，量其完整渲染高作为窗口内容高。
@@ -99,15 +97,6 @@ class _MainPageState extends State<MainPage> {
       (_) => _onTriggerTick(),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
-    // 注册设置窗口关闭回调：saved=true → reload 配置，false → 仅移遮罩不 reload。
-    // （生产 opener 的设置窗口 engine 退出时也兜底走此回调，saved=false。）
-    widget.settingsOpener.onClosed((saved) {
-      if (!mounted) return;
-      if (saved) {
-        _applyConfig(widget.configService.load());
-      }
-      setState(() => _settingsOpen = false);
-    });
   }
 
   @override
@@ -394,17 +383,7 @@ class _MainPageState extends State<MainPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF2D2D30),
-      body: Stack(
-        children: [
-          _buildMini(),
-          // 设置窗口模态：半透遮罩 + 禁用主窗口交互（含拖动/按钮）。
-          if (_settingsOpen)
-            Container(
-              color: Colors.black.withValues(alpha: 0.4),
-              child: const AbsorbPointer(),
-            ),
-        ],
-      ),
+      body: _view == 'settings' ? _buildSettings() : _buildMini(),
     );
   }
 
@@ -441,17 +420,18 @@ class _MainPageState extends State<MainPage> {
               widget.configService.save(_config);
             },
           ),
-          // 设置：打开独立设置窗口并进入模态遮罩（关闭后按 saved 决定是否 reload）。
+          // 设置：原地切到 ConfigPanel 视图（窗口放大到 420×560）。
           IconButton(
             iconSize: 14,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minHeight: 22, minWidth: 22),
             tooltip: l.t('settings'),
-            icon: const Icon(Icons.settings, color: Color(0xFFAAAAAA), size: 14),
-            onPressed: () {
-              setState(() => _settingsOpen = true);
-              widget.settingsOpener.open();
-            },
+            icon: const Icon(
+              Icons.settings,
+              color: Color(0xFFAAAAAA),
+              size: 14,
+            ),
+            onPressed: _openSettings,
           ),
           // 最小化。
           IconButton(
@@ -504,8 +484,8 @@ class _MainPageState extends State<MainPage> {
                 children: _config.providers
                     .map(
                       (p) => UsageFrame(
-                        result: _usages[p.id] ??
-                            const UsageResult('', [], null),
+                        result:
+                            _usages[p.id] ?? const UsageResult('', [], null),
                         l10n: l,
                         resetText: _resetText,
                         displayName: p.name,
@@ -521,6 +501,70 @@ class _MainPageState extends State<MainPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 打开设置视图：先放大窗口到设置尺寸，再 setState 切视图（避免设置内容在
+  /// mini 尺寸窗口渲染一帧被裁）。
+  Future<void> _openSettings() async {
+    await widget.window.setHeight(_settingsW, _settingsH);
+    if (!mounted) return;
+    setState(() => _view = 'settings');
+  }
+
+  /// 关闭设置视图：切回 mini，PostFrame 重测内容高缩回。
+  void _closeSettings() {
+    setState(() => _view = 'mini');
+    WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
+  }
+
+  /// 设置视图：顶部 X 关闭栏 + ConfigPanel。保存→[_applyConfig]+切回；取消/X→切回。
+  Widget _buildSettings() {
+    return GestureDetector(
+      // 设置视图也可拖动（无系统标题栏）。
+      onPanStart: (_) => widget.window.startDragging(),
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 极简标题栏：仅 X 关闭（=取消切回 mini）。
+          SizedBox(
+            height: 22,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  iconSize: 14,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minHeight: 22,
+                    minWidth: 22,
+                  ),
+                  tooltip: widget.l10n.t('cancel'),
+                  icon: const Icon(
+                    Icons.close,
+                    color: Color(0xFFAAAAAA),
+                    size: 14,
+                  ),
+                  onPressed: _closeSettings,
+                ),
+                const SizedBox(width: 4),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ConfigPanel(
+              initial: _config,
+              l10n: widget.l10n,
+              onSave: (next, _) {
+                _applyConfig(next);
+                _closeSettings();
+              },
+              onCancel: _closeSettings,
+            ),
+          ),
+        ],
       ),
     );
   }

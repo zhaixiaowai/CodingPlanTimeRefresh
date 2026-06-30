@@ -36,15 +36,7 @@ dependencies:
   intl: ^0.20.3
   path_provider: ^2.1.6
   win32: ^6.3.0
-  # desktop_multi_window 0.3.0 README「Integration with window_manager」明确要求用
-  # boyan01 fork（ref 6fae92d）：正式版 window_manager 在子窗口 engine 内不生效
-  # （尺寸/居中/关闭/拖动全失效）。fork 专为多窗口适配，主窗口行为兼容。
-  window_manager:
-    git:
-      url: https://github.com/boyan01/window_manager.git
-      path: packages/window_manager
-      ref: 6fae92d21b4c80ce1b8f71c1190d7970cf722bd4
-  desktop_multi_window: ^0.3.0
+  window_manager: ^0.5.1
   material_symbols_icons: ^4.2951.0
 
 dev_dependencies:
