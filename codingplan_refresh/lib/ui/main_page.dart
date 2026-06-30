@@ -366,6 +366,9 @@ class _MainPageState extends State<MainPage> {
     if ((h - _lastContentHeight).abs() > 2) {
       _lastContentHeight = h;
       widget.window.setHeight(_miniWidth(), h);
+      // setHeight 可能改变窗口宽度（如设置 420→mini 260），宽度变化致 Text 换行重排、
+      // 高度随之变。排下一帧复测，按新宽度量准（收敛：宽固定后高稳定，阈值<2 停）。
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
     }
   }
 
