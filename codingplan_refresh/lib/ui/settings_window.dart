@@ -40,48 +40,54 @@ class SettingsApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF2D2D30),
       ),
       home: Scaffold(
-        body: GestureDetector(
-          // 设置窗口自身也可拖动（隐藏系统标题栏后）。
-          onPanStart: (_) => windowController.startDragging(),
-          behavior: HitTestBehavior.opaque,
-          child: Column(
-            children: [
-              _buildTitleBar(),
-              Expanded(
-                child: ConfigPanel(
-                  initial: initial,
-                  l10n: l10n,
-                  onSave: (next, _) {
-                    configService.save(next);
-                    onSave(next);
-                  },
-                  onCancel: onCancel,
-                ),
+        body: Column(
+          children: [
+            // 仅标题栏作为拖动区（像标准无标题栏窗口的 caption 区）。
+            // 不能包整个 body：ConfigPanel 内的 ReorderableListView 长按-拖动也是
+            // pan 手势，若外层 onPanStart 抢先胜出会触发 startDragging 移动整个窗口，
+            // 导致 provider 排序失效。
+            _buildTitleBar(),
+            Expanded(
+              child: ConfigPanel(
+                initial: initial,
+                l10n: l10n,
+                onSave: (next, _) {
+                  configService.save(next);
+                  onSave(next);
+                },
+                onCancel: onCancel,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  /// 极简标题栏：仅一个 X 关闭按钮（=取消不保存）。
+  /// 极简标题栏：拖动区 + 仅一个 X 关闭按钮（=取消不保存）。
+  ///
+  /// 拖动手势仅在此处生效（onPanStart → startDragging 移动窗口），X 按钮自带
+  /// GestureDetector 会优先命中其命中区，不触发拖动。
   Widget _buildTitleBar() {
-    return SizedBox(
-      height: 24,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          IconButton(
-            iconSize: 14,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minHeight: 24, minWidth: 24),
-            icon: const Icon(Icons.close, color: Color(0xFFAAAAAA), size: 14),
-            onPressed: onCancel,
-            tooltip: l10n.t('cancel'),
-          ),
-          const SizedBox(width: 4),
-        ],
+    return GestureDetector(
+      onPanStart: (_) => windowController.startDragging(),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        height: 24,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            IconButton(
+              iconSize: 14,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minHeight: 24, minWidth: 24),
+              icon: const Icon(Icons.close, color: Color(0xFFAAAAAA), size: 14),
+              onPressed: onCancel,
+              tooltip: l10n.t('cancel'),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
       ),
     );
   }

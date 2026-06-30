@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 /// 设置窗口打开器抽象：隔离多窗口实现（生产用 desktop_multi_window，测试用 fake）。
@@ -30,7 +32,7 @@ const settingsMethodOnClosed = 'onClosed';
 const settingsWindowArguments = 'settings';
 
 /// 生产实现：用 desktop_multi_window 创建独立设置窗口，关闭经 [settingsChannel]
-/// 回传主窗口。
+/// 回传主窗口，并以窗口销毁事件兜底（spec §6 destroyed 兜底）。
 ///
 /// 实现要点（基于 desktop_multi_window 0.3.0 真实 API 核对，pub cache 源码确认）：
 /// - `WindowMethodChannel` 是 **实例类**，`invokeMethod`/`setMethodCallHandler` 为
@@ -41,8 +43,17 @@ const settingsWindowArguments = 'settings';
 ///   main.dart 的 `_runSettingsWindow`，用 `waitUntilReadyToShow` 设 420×560/居中/
 ///   无系统标题栏，onSave/onCancel 调 `notifyClosedAndClose`）。
 ///   控制器本身无 setSize/center 方法，故主窗口不直接设子窗口大小。
+/// - **兜底**：包无「按窗口 id 的 onClose 回调」，仅有全局 [onWindowsChanged]
+///   Stream（窗口列表创建/销毁时触发）与 [WindowController.getAll]（同步查全部
+///   活跃窗口）。故订阅该 Stream，事件后查 [WindowController.getAll]，若被跟踪的
+///   设置窗口 id 已不在列表 → 判定 destroyed，按 saved=false 触发回调（崩溃/异常
+///   关闭未发 IPC 时由此兜底，避免主窗口永久卡模态遮罩）。正常关闭时 IPC 先到，
+///   `_closed` 标志防止重复触发。
 class DesktopMultiWindowSettingsOpener implements SettingsWindowOpener {
   void Function(bool saved)? _cb;
+  String? _trackedWindowId;
+  bool _closed = false;
+  StreamSubscription<void>? _windowChangeSub;
 
   @override
   Future<void> open() async {
@@ -51,7 +62,7 @@ class DesktopMultiWindowSettingsOpener implements SettingsWindowOpener {
       if (call.method == settingsMethodOnClosed) {
         final args = call.arguments;
         final saved = args is Map && args['saved'] == true;
-        _cb?.call(saved);
+        _notify(saved);
       }
       return null;
     });
@@ -64,11 +75,33 @@ class DesktopMultiWindowSettingsOpener implements SettingsWindowOpener {
         hiddenAtLaunch: true,
       ),
     );
+    _trackedWindowId = controller.windowId;
     await controller.show();
+
+    // destroyed 兜底：订阅窗口列表变更，事件后查设置窗口是否仍存活。
+    _windowChangeSub = onWindowsChanged.listen((_) async {
+      if (_closed || _trackedWindowId == null) return;
+      final alive = await WindowController.getAll();
+      final stillExists =
+          alive.any((c) => c.windowId == _trackedWindowId);
+      if (!stillExists) {
+        // 设置窗口已销毁但未发 IPC（异常关闭/崩溃）→ 按 saved=false 兜底。
+        _notify(false);
+      }
+    });
   }
 
   @override
   void onClosed(void Function(bool saved) cb) {
     _cb = cb;
+  }
+
+  /// 统一触发关闭回调，[closed] 标志保证只触发一次（IPC 与 destroyed 兜底互斥）。
+  void _notify(bool saved) {
+    if (_closed) return;
+    _closed = true;
+    _windowChangeSub?.cancel();
+    _windowChangeSub = null;
+    _cb?.call(saved);
   }
 }
