@@ -7,16 +7,11 @@ import 'package:window_manager/window_manager.dart';
 /// 注意：`window_manager` 包内部用到 `Size`（来自 `dart:ui`）但未 re-export，
 /// 故本文件显式 `import 'dart:ui' show Size;`，否则引用本类的测试/构建会因
 /// `Size` 未定义而编译失败。方法为普通实例方法，便于测试以子类 override 注入。
-class WindowController with WindowListener {
-  /// 失焦半透常量（spec §6）。
-  static const double inactiveOpacity = 0.95;
-  static const double activeOpacity = 1.0;
-
+class WindowController {
   /// 初始化窗口：固定尺寸、居中、不可缩放、禁最大化、置顶。
   ///
   /// 仅保留 minimumSize=Size(width,80) 防内容为空时窗口过矮。禁拖拽/最大化由
-  /// setResizable(false)+setMaximizable(false) 实现（双平台）。设置窗口由独立 engine
-  /// 内的 window_manager 自管尺寸（见 main.dart _runSettingsWindow）。
+  /// setResizable(false)+setMaximizable(false) 实现（双平台）。
   Future<void> setup({
     required double width,
     required double height,
@@ -42,9 +37,8 @@ class WindowController with WindowListener {
         await windowManager.setMaximizable(false);
         await windowManager.setAlwaysOnTop(alwaysOnTop);
         await windowManager.setSize(Size(width, height));
-        // 失焦半透：注册焦点监听，按当前焦点设初始透明度（避启动全显后闪一下）。
-        windowManager.addListener(this);
-        await setOpacityByFocus(await isFocusedNow());
+        // 失焦不调透明度：setOpacity 会触发 Windows 分层窗口，致失焦期间画面合成滞后、
+        // setState 后停在旧帧（残留旧画面，获焦停顿后恢复）。窗口始终不透明（1.0）。
       },
     );
   }
@@ -59,36 +53,6 @@ class WindowController with WindowListener {
 
   /// 关闭窗口 = 退出应用（主窗口关闭按钮）。
   Future<void> close() => windowManager.close();
-
-  /// 计算应使用的透明度：focused → 1.0，否则 0.95。纯函数便于单测。
-  static double opacityFor({required bool focused}) =>
-      focused ? activeOpacity : inactiveOpacity;
-
-  /// 应用透明度到窗口。抽出便于测试 override 记录最终 opacity（绕开 channel）。
-  ///
-  /// macOS：setOpacity 走 NSWindow setAlphaValue、焦点回调同源，理论上跨平台一致；
-  /// 但 macOS 全程未真机实测，本次以 Windows 为准，待后续验证。
-  Future<void> applyOpacity(double opacity) async {
-    await windowManager.setOpacity(opacity);
-  }
-
-  /// 当前窗口是否聚焦。抽出便于测试 override（绕开 windowManager.isFocused channel）。
-  Future<bool> isFocusedNow() async => await windowManager.isFocused();
-
-  /// 按焦点设窗口透明度：focused → 1.0，否则 0.95。
-  Future<void> setOpacityByFocus(bool focused) async {
-    await applyOpacity(opacityFor(focused: focused));
-  }
-
-  @override
-  void onWindowFocus() {
-    setOpacityByFocus(true);
-  }
-
-  @override
-  void onWindowBlur() {
-    setOpacityByFocus(false);
-  }
 
   /// 设置窗口尺寸。
   ///
