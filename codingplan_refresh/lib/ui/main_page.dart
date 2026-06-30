@@ -476,46 +476,49 @@ class _MainPageState extends State<MainPage> {
   }
 
   /// mini 态：顶部栏（齿轮+置顶）+ 每 provider 一个 UsageFrame。
-  /// 不用 ScrollView——窗口高度自适应（setHeight=内容高+补偿），内容永远≤窗口，
-  /// 无需滚动。直接 Column，量其完整渲染高作为窗口内容高，避免 ScrollView 的
-  /// viewport 约束干扰测量（曾导致量到的 contentH 偏小、却仍出滚动条）。
+  /// 外层 SingleChildScrollView + NeverScrollableScrollPhysics：给内层 Column 无界主轴
+  /// 高度，使其按内容自然撑开（而非被窗口客户区高约束裁切），_resizeToContent 才能量到
+  /// 内容真实高。NeverScrollable 禁用滚动（窗口高度自适应，内容≤窗口，无需滚）。
   Widget _buildMini() {
     final l = widget.l10n;
     return GestureDetector(
       // 整个 mini 界面可拖动窗口；按钮作为子节点 tap 优先命中不影响拖动。
       onPanStart: (_) => widget.window.startDragging(),
       behavior: HitTestBehavior.opaque,
-      child: Padding(
-        key: _contentKey,
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildTopBar(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: _config.providers
-                    .map(
-                      (p) => UsageFrame(
-                        result:
-                            _usages[p.id] ?? const UsageResult('', [], null),
-                        l10n: l,
-                        resetText: _resetText,
-                        displayName: p.name,
-                        // _usages[p.id]==null：从未查到过（首次查询中）→ loading 占位；
-                        // 非 null（有旧数据或错误）→ 显示旧内容，刷新查询无感。
-                        isLoading: _usages[p.id] == null,
-                        // 下次触发提示（全局共享同一值），显示在每个用量框 legend 后。
-                        nextTriggerText: _nextTriggerText,
-                      ),
-                    )
-                    .toList(),
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: Padding(
+          key: _contentKey,
+          padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildTopBar(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: _config.providers
+                      .map(
+                        (p) => UsageFrame(
+                          result:
+                              _usages[p.id] ?? const UsageResult('', [], null),
+                          l10n: l,
+                          resetText: _resetText,
+                          displayName: p.name,
+                          // _usages[p.id]==null：从未查到过（首次查询中）→ loading 占位；
+                          // 非 null（有旧数据或错误）→ 显示旧内容，刷新查询无感。
+                          isLoading: _usages[p.id] == null,
+                          // 下次触发提示（全局共享同一值），显示在每个用量框 legend 后。
+                          nextTriggerText: _nextTriggerText,
+                        ),
+                      )
+                      .toList(),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
