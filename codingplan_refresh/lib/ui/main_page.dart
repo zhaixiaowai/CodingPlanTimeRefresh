@@ -67,9 +67,11 @@ class _MainPageState extends State<MainPage> {
 
   // 当前视图：'mini'（用量框）| 'settings'（ConfigPanel 原地切换）。
   String _view = 'mini';
-  // 设置视图固定客户区尺寸（容纳 ConfigPanel）。
+  // 设置视图客户区尺寸：宽度固定 420；高度初始 560，随后按 ConfigPanel 实际内容高
+  // 收缩（_onSettingsHeight），消除固定值的裁剪/空白。
   static const double _settingsW = 420;
   static const double _settingsH = 560;
+  double _lastSettingsH = 0; // 设置视图上次 setHeight 高，>2px 阈值防抖
 
   // 高度自适应测量键：挂在 mini 的整个内容（topBar + 各 UsageFrame + padding）
   // 外层，量其完整渲染高作为窗口内容高。
@@ -513,10 +515,25 @@ class _MainPageState extends State<MainPage> {
     setState(() => _view = 'settings');
   }
 
-  /// 关闭设置视图：切回 mini，PostFrame 重测内容高缩回。
+  /// 关闭设置视图：切回 mini，重置高度阈值后 PostFrame 重测缩回。
   void _closeSettings() {
     setState(() => _view = 'mini');
+    // 重置阈值：切设置期间 _lastContentHeight 未更新（仍为切前 mini 高），切回 mini
+    // 后 mini 内容高与之一致 → 差值<2 不触发 setHeight，窗口不会缩回。置 0 强制重设。
+    _lastContentHeight = 0;
+    _lastSettingsH = 0;
     WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
+  }
+
+  /// 设置视图高度自适应：按 ConfigPanel 实际内容高收缩/放大窗口（消除固定 560 的
+  /// 裁剪或空白）。>2px 阈值防抖。
+  void _onSettingsHeight(double contentH) {
+    if (!mounted) return;
+    final target = contentH + 22 + 4; // 标题栏 22 + 底部余量
+    if ((target - _lastSettingsH).abs() > 2) {
+      _lastSettingsH = target;
+      widget.window.setHeight(_settingsW, target);
+    }
   }
 
   /// 设置视图：顶部 X 关闭栏 + ConfigPanel。保存→[_applyConfig]+切回；取消/X→切回。
@@ -562,6 +579,7 @@ class _MainPageState extends State<MainPage> {
                 _closeSettings();
               },
               onCancel: _closeSettings,
+              onHeightChanged: _onSettingsHeight,
             ),
           ),
         ],
