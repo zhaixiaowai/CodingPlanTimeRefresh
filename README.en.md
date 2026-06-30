@@ -82,36 +82,21 @@ This repo is undergoing a Flutter multi-provider refactor (under `codingplan_ref
 ### Supported Providers
 
 - **Zhipu BigModel** (bigmodel.cn): queries usage quota via HTTP.
-- **Volcengine Ark** (ark.cn-beijing.volces.com): queries usage via the local `arkcli` tool.
+- **Volcengine Ark** (ark.cn-beijing.volces.com): queries usage via Access Key / Secret Access Key.
 
 ### Volcengine Ark Usage Prerequisites
 
-Volcengine Ark usage querying relies on the official `arkcli` CLI. Install and log in first:
+Volcengine Ark usage querying uses long-lived Volcengine **Access Key / Secret Access Key** (OpenAPI V4 signing) — no local tooling and no login required:
 
-1. Install arkcli (see https://console.volcengine.com/ark/region:cn-beijing/docs/82379/2536875 )
-2. Run `arkcli auth login` to complete login
-3. The app queries automatically via `arkcli usage plan`
+1. Create an Access Key / Secret Access Key pair in the Volcengine console → Key Management (IAM).
+2. In the app's Settings, when you add or edit a config whose API URL contains `ark.cn-beijing.volces.com`, two extra fields — **Access Key** / **Secret Access Key** — appear; fill them in.
 
-If not installed / not logged in, the Volcengine Ark usage frame shows "arkcli 未安装，参考 README".
-
-#### Login Credential Expiry
-
-The `arkcli` login credential (refresh_token) has an expiration. If arkcli has not been used for a long time (neither keeping the app running for periodic polling nor manually running arkcli commands), the credential may expire. The Volcengine Ark usage frame then shows:
-
-> 登录凭证已过期，请重新执行 arkcli auth login
-
-To fix it, re-run login once in the terminal:
-
-```bash
-arkcli auth login
-```
-
-After logging in, the next usage poll (within 60 seconds) resumes automatically.
+If unconfigured or the AK/SK is invalid, the Volcengine Ark usage frame shows the corresponding error (e.g. "Access Key / Secret Access Key not configured", "AK/SK invalid or no permission").
 
 ### Configuration (Multiple)
 
 - Main UI ☰ menu → Settings: manage multiple model configs (long-press drag to reorder, add, delete, edit).
-- Each config fills in: Name, API URL, API Key, Model (Zhipu: model name like `glm-5.1`; Volcengine: endpoint id like `ep-xxx`).
+- Each config fills in: Name, API URL, API Key, Model (Zhipu: model name like `glm-5.1`; Volcengine: endpoint id like `ep-xxx`). Volcengine configs additionally require Access Key / Secret Access Key (usage query only).
 - Provider is auto-detected from the API URL.
 
 ### Build

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/app_config.dart';
 import '../../services/localization_service.dart';
+import '../../utils/vendor.dart';
 
 /// 多组配置面板：ReorderableListView 拖动排序 + 新增/删除(确认)/编辑 + 语言。
 /// 拖动用 ReorderableListView 自带拖拽（长按 handle）。
@@ -30,7 +31,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
   late List<ProviderConfig> _providers;
   late int _selectedIdx; // 当前编辑的 provider 索引
   late int _langIndex; // 0 auto 1 zh 2 en
-  late TextEditingController _name, _url, _key, _model;
+  late TextEditingController _name, _url, _key, _model, _ak, _sk;
   // 触发时刻（整点 0-23）勾选状态：从 initial.triggerHours 初始化，保存时写回。
   late Set<int> _triggerHours;
   int _idCounter = 0;
@@ -51,6 +52,8 @@ class _ConfigPanelState extends State<ConfigPanel> {
     _url = TextEditingController();
     _key = TextEditingController();
     _model = TextEditingController();
+    _ak = TextEditingController();
+    _sk = TextEditingController();
     if (_selectedIdx >= 0) _loadFields(_selectedIdx);
     _triggerHours = Set<int>.from(widget.initial.triggerHours);
   }
@@ -61,6 +64,8 @@ class _ConfigPanelState extends State<ConfigPanel> {
     _url.dispose();
     _key.dispose();
     _model.dispose();
+    _ak.dispose();
+    _sk.dispose();
     super.dispose();
   }
 
@@ -70,6 +75,8 @@ class _ConfigPanelState extends State<ConfigPanel> {
     _url.text = p.apiUrl;
     _key.text = p.apiKey;
     _model.text = p.model;
+    _ak.text = p.accessKey;
+    _sk.text = p.secretKey;
   }
 
   void _saveCurrentFields() {
@@ -79,6 +86,8 @@ class _ConfigPanelState extends State<ConfigPanel> {
       apiUrl: _url.text,
       apiKey: _key.text,
       model: _model.text,
+      accessKey: _ak.text,
+      secretKey: _sk.text,
     );
   }
 
@@ -241,9 +250,16 @@ class _ConfigPanelState extends State<ConfigPanel> {
                 'API URL',
                 _url,
                 hint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+                // URL 决定厂商识别 → 切换 AK/SK 输入框显隐，故输入即 setState 重建。
+                onChanged: (_) => setState(() {}),
               ),
               _field('API Key', _key, hint: 'sk-xxx', obscure: true),
               _field('Model', _model, hint: 'glm-5.1 / ep-xxx'),
+              // 火山方舟：额外两个用量查询凭证（OpenAPI V4 签名的长效 AK/SK）。
+              if (isVolcArk(_url.text)) ...[
+                _field('Access Key', _ak, obscure: true),
+                _field('Secret Access Key', _sk, obscure: true),
+              ],
             ],
             const SizedBox(height: 16),
             Row(
@@ -366,7 +382,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
   String _vendorOf(String url) {
     final l = widget.l10n;
     if (url.contains('bigmodel.cn')) return l.t('zhipu');
-    if (url.contains('ark.cn-beijing.volces.com')) return l.t('volc');
+    if (isVolcArk(url)) return l.t('volc');
     return l.t('vendorUnknown');
   }
 
@@ -375,6 +391,7 @@ class _ConfigPanelState extends State<ConfigPanel> {
     TextEditingController c, {
     String? hint,
     bool obscure = false,
+    ValueChanged<String>? onChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -386,8 +403,10 @@ class _ConfigPanelState extends State<ConfigPanel> {
         ),
         const SizedBox(height: 4),
         TextField(
+          key: ValueKey(label),
           controller: c,
           obscureText: obscure,
+          onChanged: onChanged,
           style: const TextStyle(color: Colors.white, fontSize: 12),
           decoration: InputDecoration(
             filled: true,

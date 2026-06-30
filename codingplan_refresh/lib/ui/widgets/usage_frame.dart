@@ -173,11 +173,11 @@ class UsageFrame extends StatelessWidget {
     final c = pct.clamp(0.0, 100.0);
     final pctText = pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1);
     // 进度条内嵌文字：高用量（pct≥80%）且有重置时，把已本地化的重置文本接在百分比后，
-    // 形如「80% (重置 09:05)」（一眼提示即将重置）；否则仅「NN%」。resetText 已含本地化
+    // 形如「80% 重置 09:05」（一眼提示即将重置）；否则仅「NN%」。resetText 已含本地化
     // 「重置 HH:mm」/「Reset HH:mm」前缀，直接拼接即可，无需额外本地化。
     final hasReset = resetText != null && resetText.isNotEmpty;
     final showResetInline = c >= 80 && hasReset;
-    final barText = showResetInline ? '$pctText% ($resetText)' : '$pctText%';
+    final barText = showResetInline ? '$pctText% $resetText' : '$pctText%';
     final bar = SizedBox(
       height: 16,
       child: Stack(

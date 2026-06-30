@@ -69,18 +69,18 @@ class LocalizationService {
       'zh': '未知厂商，不支持用量查询',
       'en': 'Unknown vendor, usage query unsupported',
     },
-    // arkcli 未安装（火山方舟 provider）
-    'arkcliNotInstalled': {
-      'zh': 'arkcli 未安装，参考 README',
-      'en': 'arkcli not installed, see README',
+    // 火山方舟 AK/SK 未配置（设置面板填写的长效凭证）
+    'volcAkSkNotConfigured': {
+      'zh': '未配置 Access Key / Secret Access Key',
+      'en': 'Access Key / Secret Access Key not configured',
+    },
+    // 火山方舟 AK/SK 无效或无权限（签名错/401/403）
+    'volcAkSkInvalid': {
+      'zh': 'AK/SK 无效或无权限',
+      'en': 'AK/SK invalid or no permission',
     },
     // 用量查询超时
     'queryTimeout': {'zh': '查询超时', 'en': 'Query timed out'},
-    // arkcli 登录凭证过期（refresh_token invalid）
-    'tokenExpired': {
-      'zh': '登录凭证已过期，请重新执行 arkcli auth login',
-      'en': 'Login credentials expired, run "arkcli auth login" again',
-    },
     // ApiUrlNotConfigured
     'apiUrlNotConfigured': {
       'zh': 'API URL 未配置',

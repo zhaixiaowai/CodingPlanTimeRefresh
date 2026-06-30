@@ -13,6 +13,7 @@ import '../services/log_service.dart';
 import '../services/usage_provider.dart';
 import '../services/scheduler_service.dart';
 import '../services/volc_ark_usage_provider.dart';
+import '../utils/vendor.dart';
 import '../platform/window_controller.dart';
 import 'widgets/config_panel.dart';
 import 'widgets/usage_frame.dart';
@@ -113,22 +114,23 @@ class _MainPageState extends State<MainPage> {
   /// 厂商识别 → 返回该 provider 的 UsageProvider（未知返回 null）。
   ///
   /// 按 apiUrl 域名匹配：`bigmodel.cn` → 智谱，`ark.cn-beijing.volces.com` → 火山方舟。
-  /// 未识别的厂商返回 null，调用方显示「未知厂商」。
+  /// 火山方舟用量用 AK/SK（OpenAPI V4 签名）查询，凭证从 ProviderConfig 的
+  /// accessKey/secretKey 取（设置面板填写）。未识别的厂商返回 null，调用方显示「未知厂商」。
   UsageProvider? _providerFor(ProviderConfig p) {
     final url = p.apiUrl;
     if (url.contains('bigmodel.cn')) {
       return BigmodelUsageProvider(p.apiKey, widget.log);
     }
-    if (url.contains('ark.cn-beijing.volces.com')) {
-      return VolcArkUsageProvider();
+    if (isVolcArk(url)) {
+      return VolcArkUsageProvider(p.accessKey, p.secretKey, widget.log);
     }
     return null;
   }
 
   /// 并行查询所有 provider 用量：每个 provider 起独立 async 查询（智谱 HTTP +
-  /// 火山方舟 arkcli 子进程同时进行），先返回的先 setState 显示——总耗时 ≈ 最慢
+  /// 火山方舟 HTTP 同时进行），先返回的先 setState 显示——总耗时 ≈ 最慢
   /// 的那个，而非串行相加（旧 for+await 是 A 完才 B，两个都几秒时翻倍）。
-  /// 全是 async IO（http.get / Process.start），不阻塞主 isolate，UI 不卡。
+  /// 全是 async IO（http.get），不阻塞主 isolate，UI 不卡。
   /// 全部完成后统一更新窗口标题 + 排高度自适应。
   Future<void> _queryAllUsage() async {
     final futures = <Future<void>>[];

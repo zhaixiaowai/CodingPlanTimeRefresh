@@ -34,9 +34,9 @@ void main() {
       find.text('月'),
       findsOneWidget,
     ); // mcpMonthly label=月，resetAtMs=null 故无 (MCP) 前缀
-    // 百分比内嵌进度条（textContaining 匹配）。mcp 行前缀 (mcp)。
+    // 百分比内嵌进度条（textContaining 匹配）。mcp 行不再前缀 (mcp)，区分改在 Tooltip。
     expect(find.textContaining('34%'), findsOneWidget);
-    expect(find.textContaining('(mcp)12%'), findsOneWidget);
+    expect(find.textContaining('12%'), findsOneWidget);
     // 重置时间默认不显示（hover 进度条才浮出，见 _ProgressBar）。
     expect(find.textContaining('重置'), findsNothing);
   });
@@ -127,7 +127,7 @@ void main() {
 
   testWidgets('失败：显示 errorMessage', (tester) async {
     final l10n = LocalizationService()..initialize('zh');
-    final result = const UsageResult('火山方舟', [], 'arkcliNotInstalled');
+    final result = const UsageResult('火山方舟', [], 'queryFailed');
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -136,7 +136,7 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.text('arkcli 未安装，参考 README'), findsOneWidget);
+    expect(find.text('查询失败，未找到数据'), findsOneWidget);
   });
 
   testWidgets('mcpMonthly → 进度条内嵌 (mcp)NN% 标注', (tester) async {
@@ -152,9 +152,9 @@ void main() {
       ),
     );
     await tester.pump();
-    // mcpMonthly label=月，进度条百分比前加 (mcp) 标注。
+    // mcpMonthly label=月；进度条不再前缀 (mcp)，区分改在 hover Tooltip（mcpTipLabel）。
     expect(find.text('月'), findsOneWidget);
-    expect(find.textContaining('(mcp)12%'), findsOneWidget);
+    expect(find.textContaining('12%'), findsOneWidget);
     // 重置时间默认隐藏（hover 进度条才显示，见 _ProgressBar）。
     expect(find.textContaining('重置'), findsNothing);
   });
@@ -175,5 +175,26 @@ void main() {
     // 文字用真实 pct（非钳制值），超配额显示 150% 告警，不显示「100%」。
     expect(find.textContaining('150%'), findsOneWidget);
     expect(find.textContaining('100%'), findsNothing);
+  });
+
+  testWidgets('高用量(≥80%)+有重置 → 进度条内嵌「NN% 重置 HH:mm」（无括号）', (
+    tester,
+  ) async {
+    final l10n = LocalizationService()..initialize('zh');
+    final result = UsageResult('智谱 Pro', [
+      UsageItem('token5h', 85, 1782478364000),
+    ], null);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UsageFrame(result: result, l10n: l10n, resetText: _reset),
+        ),
+      ),
+    );
+    await tester.pump();
+    // resetText 由 _reset 产出「重置 HH:mm」（本地化）；进度条内嵌「85% 重置 HH:mm」，
+    // 不再带括号。
+    expect(find.textContaining('85% 重置'), findsOneWidget);
+    expect(find.textContaining('(重置'), findsNothing);
   });
 }

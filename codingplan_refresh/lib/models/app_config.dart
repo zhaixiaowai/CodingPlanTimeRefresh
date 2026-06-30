@@ -2,12 +2,17 @@ import 'dart:convert';
 
 /// 单个厂商配置。id 在创建时生成（稳定标识），拖动排序不变；
 /// 用于运行时状态（ResultState/UsageResult/lastTriggerKeys）按键关联。
+///
+/// [accessKey] / [secretKey] 仅火山方舟用量查询使用（OpenAPI V4 签名 AK/SK），
+/// 智谱等其它厂商留空；旧配置无这两个字段时默认空字符串（向后兼容）。
 class ProviderConfig {
   final String id;
   String name;
   String apiUrl;
   String apiKey;
   String model;
+  String accessKey;
+  String secretKey;
 
   ProviderConfig({
     required this.id,
@@ -15,6 +20,8 @@ class ProviderConfig {
     this.apiUrl = '',
     this.apiKey = '',
     this.model = 'glm-5.1',
+    this.accessKey = '',
+    this.secretKey = '',
   });
 
   factory ProviderConfig.fromJson(Map<String, dynamic> json) => ProviderConfig(
@@ -23,6 +30,8 @@ class ProviderConfig {
     apiUrl: json['ApiUrl'] as String? ?? '',
     apiKey: json['ApiKey'] as String? ?? '',
     model: json['Model'] as String? ?? 'glm-5.1',
+    accessKey: json['AccessKey'] as String? ?? '',
+    secretKey: json['SecretKey'] as String? ?? '',
   );
 
   Map<String, dynamic> toJson() => {
@@ -31,6 +40,8 @@ class ProviderConfig {
     'ApiUrl': apiUrl,
     'ApiKey': apiKey,
     'Model': model,
+    'AccessKey': accessKey,
+    'SecretKey': secretKey,
   };
 
   ProviderConfig copyWith({
@@ -38,12 +49,16 @@ class ProviderConfig {
     String? apiUrl,
     String? apiKey,
     String? model,
+    String? accessKey,
+    String? secretKey,
   }) => ProviderConfig(
     id: id,
     name: name ?? this.name,
     apiUrl: apiUrl ?? this.apiUrl,
     apiKey: apiKey ?? this.apiKey,
     model: model ?? this.model,
+    accessKey: accessKey ?? this.accessKey,
+    secretKey: secretKey ?? this.secretKey,
   );
 }
 

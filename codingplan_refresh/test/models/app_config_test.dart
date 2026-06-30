@@ -108,4 +108,49 @@ void main() {
     // checkTrigger 的 now.hour==25 永不命中，保活静默失效）。
     expect(loaded.triggerHours, [1, 7, 13, 19]);
   });
+
+  test('accessKey/secretKey 序列化往返（火山方舟 AK/SK）', () {
+    final c = AppConfig(
+      providers: [
+        ProviderConfig(
+          id: 'volc',
+          name: '火山',
+          apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+          apiKey: 'llm-key',
+          model: 'ep-xxx',
+          accessKey: 'AKxxx',
+          secretKey: 'SKxxx',
+        ),
+      ],
+    );
+    final loaded = AppConfig.fromJson(c.toJson());
+    expect(loaded.providers[0].accessKey, 'AKxxx');
+    expect(loaded.providers[0].secretKey, 'SKxxx');
+  });
+
+  test('旧配置无 AccessKey/SecretKey → 默认空（向后兼容）', () {
+    final json = <String, dynamic>{
+      'Providers': [
+        {
+          'Id': 'a',
+          'Name': 'x',
+          'ApiUrl': 'https://x',
+          'ApiKey': 'k',
+          'Model': 'glm-5.1',
+        },
+      ],
+      'IsAlwaysOnTop': false,
+    };
+    final loaded = AppConfig.fromJson(json);
+    expect(loaded.providers[0].accessKey, '');
+    expect(loaded.providers[0].secretKey, '');
+  });
+
+  test('copyWith 保留未传入的 accessKey/secretKey', () {
+    final p = ProviderConfig(id: 'x', accessKey: 'AK', secretKey: 'SK');
+    final p2 = p.copyWith(name: 'renamed');
+    expect(p2.accessKey, 'AK');
+    expect(p2.secretKey, 'SK');
+    expect(p2.name, 'renamed');
+  });
 }

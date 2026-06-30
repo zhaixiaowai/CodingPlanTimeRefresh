@@ -1,208 +1,178 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'package:http/http.dart' as http;
 import 'package:codingplan_refresh/models/usage_info.dart';
+import 'package:codingplan_refresh/services/log_service.dart';
 import 'package:codingplan_refresh/services/usage_provider.dart';
+import 'package:codingplan_refresh/utils/volc_v4_signer.dart';
 
-/// 火山方舟用量：通过本地 arkcli 子进程查询 `arkcli usage plan`，10s 超时。
-/// runner 抽象便于测试注入（生产用默认 _realRunner 调 Process.start，超时 kill 子进程）。
-typedef ArkRunner =
-    Future<String> Function({
-      required List<String> args,
-      required Duration timeout,
-    });
-
+/// 火山方舟用量：用 AK/SK + 火山引擎 OpenAPI V4 签名，直接 GET `GetCodingPlanUsage`
+/// 查询（取代旧 arkcli 子进程方案）。AK/SK 为用户在设置面板填写的长效凭证，
+/// 无需登录态、无需本地工具。15s 超时。
+///
+/// 接口常量与 `docs/main.js` 一致：host=`ark.cn-beijing.volcengineapi.com`、
+/// region=`cn-beijing`、service=`ark`、action=`GetCodingPlanUsage`、version=`2024-01-01`。
+///
+/// [client] / [now] 为可注入的测试 seam：生产分别用默认 `http.Client()` 与
+/// `DateTime.now`；测试注入 `http.testing.MockClient` 与固定时钟，使签名 xDate
+/// 确定可断言。
 class VolcArkUsageProvider implements UsageProvider {
-  final ArkRunner runner;
-  VolcArkUsageProvider({ArkRunner? runner}) : runner = runner ?? _realRunner;
+  static const _host = 'ark.cn-beijing.volcengineapi.com';
+  static const _region = 'cn-beijing';
+  static const _service = 'ark';
+  static const _action = 'GetCodingPlanUsage';
+  static const _version = '2024-01-01';
 
-  static Future<String> _realRunner({
-    required List<String> args,
-    required Duration timeout,
-  }) async {
-    // Windows 上 arkcli 是 .cmd；走 runInShell 让 shell 解析。
-    // 用 Process.start 而非 Process.run，以便超时时 process.kill 真正杀子进程（Process.run 无句柄，超时会留僵尸 arkcli）。
-    //
-    // 局限说明（runInShell:true）：经 cmd.exe 启动 arkcli（.cmd → node 子进程），
-    // proc.kill(sigkill) 仅杀 cmd.exe shell，arkcli 的 node 子进程可能成孤儿。
-    // dart:io 无 Job Object 绑定能力，无法可靠杀整棵子进程树。超时是罕见路径
-    // （10s），kill 仍做（比不 kill 强，至少 shell 被杀、stdout 管道关闭）；
-    // 下线前评估平台插件方案（如 process_group / windows_task_scheduler）。
-    final proc = await Process.start('arkcli', args, runInShell: true);
-    try {
-      final stdout = await proc.stdout
-          .transform(utf8.decoder)
-          .join()
-          .timeout(
-            timeout,
-            onTimeout: () {
-              // 见上文局限说明：仅杀 shell，arkcli node 子进程可能成孤儿。
-              proc.kill(ProcessSignal.sigkill);
-              throw TimeoutException('arkcli timeout', timeout);
-            },
-          );
-      final exitCode = await proc.exitCode;
-      if (exitCode != 0) {
-        // 进程失败（含超时杀掉）：stderr 当失败描述
-        final stderr = await proc.stderr.transform(utf8.decoder).join();
-        throw ProcessException('arkcli', args, stderr);
-      }
-      return stdout;
-    } catch (_) {
-      // 异常路径也确保 kill（proc.kill 对已退出进程是 no-op）
-      proc.kill(ProcessSignal.sigkill);
-      rethrow;
-    }
-  }
+  /// 鉴权/签名类错误码关键词（大小写不敏感子串匹配）。**不含 `NotFound`**——它太
+  /// 宽，会把火山资源/套餐未找到类业务错误（ResourceNotFound/PlanNotFound 等）
+  /// 误判为 AK/SK 无效。对比 `docs/main.js` save-creds 的集合去掉了 NotFound。
+  static final _authErrorRe = RegExp(
+    r'Signature|InvalidAccessKey|AccessDenied|Authentication',
+    caseSensitive: false,
+  );
+
+  final String accessKey;
+  final String secretKey;
+  final LogService log;
+  final http.Client client;
+  final DateTime Function() _now;
+
+  /// 是否由本实例创建（true → query 结束负责 close，避免每分钟轮询泄漏底层
+  /// HttpClient 连接池）。测试注入的 client 由测试方管理生命周期，不 close。
+  final bool _ownsClient;
+
+  VolcArkUsageProvider(
+    this.accessKey,
+    this.secretKey,
+    this.log, {
+    http.Client? client,
+    DateTime Function()? now,
+  }) : client = client ?? http.Client(),
+       _ownsClient = client == null,
+       _now = now ?? DateTime.now;
 
   @override
   Future<UsageResult> query() async {
-    // 1) 用量百分比：arkcli usage plan。
-    //    若返回 refresh_token invalid（arkcli 登录凭证过期），直接当作错误返回并提示
-    //    用户重新 arkcli auth login（详见 README），不再自动重试——token 真过期时
-    //    重试无效，反而让用量查询多等 1s。由 _parseUsage 把该错误转成友好提示。
-    final usageStdout = await _runSafe(['usage', 'plan']);
-    if (usageStdout.isError) {
-      // error 路径（arkcli 非零退出+stderr → ProcessException → _runSafe 透传原始 msg）
-      // 也走友好转换，避免 refresh_token 失效走 stderr 时用户看到原始英文错误。
-      return UsageResult('火山方舟', [], _friendlyMsg(usageStdout.error!));
+    // 去首尾空白后再判空与签名：避免用户复制 AK/SK 时带入空格/换行导致签名失败、
+    // 被误判为「AK/SK 无效」。
+    final ak = accessKey.trim();
+    final sk = secretKey.trim();
+    if (ak.isEmpty || sk.isEmpty) {
+      return const UsageResult('火山方舟', [], 'volcAkSkNotConfigured');
     }
-    final parsed = _parseUsage(usageStdout.value!);
 
-    // 2) 等级（Pro/Team…）：arkcli plans get → 找 scope==edition（usage plan 的
-    //    edition）那条的 tier。失败/格式不符 → fallback 用 edition 拼标题。
-    final tier = await _fetchTierForScope(parsed.edition);
-    final title = tier != null
-        ? '火山方舟 ${tier[0].toUpperCase()}${tier.substring(1)}'
-        : parsed.title;
-    return UsageResult(title, parsed.items, parsed.errorMessage);
-  }
+    // query 顺序须与签名 canonical query 一致（按 key 字母序：Action < Version），
+    // 故字面量拼接 Action 在前，不交给 Uri 重排。
+    final url = 'https://$_host/?Action=$_action&Version=$_version';
+    final headers = buildVolcSignedHeaders(
+      ak: ak,
+      sk: sk,
+      host: _host,
+      region: _region,
+      service: _service,
+      action: _action,
+      version: _version,
+      xDate: volcXDate(_now()),
+    );
 
-  /// 把原始错误消息转友好提示：refresh_token 失效 → 指引重新登录；空 → 兜底文案。
-  /// query 的 error 路径（stderr/ProcessException）与 _parseUsage 的 ok:false 路径共用，
-  /// 确保无论 arkcli 把 refresh_token 错误走 stdout 还是 stderr 都转中文友好提示。
-  String _friendlyMsg(String msg) {
-    if (msg.contains('The request parameter refresh_token is invalid')) {
-      return 'tokenExpired';
-    }
-    // 非空原始错误（arkcli/API 返回的具体信息）原样透传（UI 层 l10n.t 未命中返回自身）；
-    // 空则兜底 queryFailed key。
-    return msg.isEmpty ? 'queryFailed' : msg;
-  }
-
-  /// 调用 arkcli 子命令，统一处理异常 → (error 不为 null 即失败)。
-  Future<_RunResult> _runSafe(List<String> args) async {
     try {
-      final stdout = await runner(
-        args: args,
-        timeout: const Duration(seconds: 10),
+      log.append(
+        '========== [Usage Request] ==========\nGET $url\n'
+        'X-Date: ${headers['x-date']}\nAuthorization: ***',
       );
-      return _RunResult(stdout);
-    } on ProcessException catch (e) {
-      final msg = e.message;
-      if (msg.contains('命令找不到') ||
-          msg.contains('命令不存在') ||
-          msg.contains('not found') ||
-          msg.contains('系统找不到') ||
-          e.toString().contains('No such file') ||
-          e.errorCode == 2) {
-        return _RunResult.withError('arkcliNotInstalled');
-      }
-      // 非空 stderr（具体错误）原样透传；空兜底 queryFailed key。
-      return _RunResult.withError(msg.isEmpty ? 'queryFailed' : msg);
+      final response = await client
+          .get(Uri.parse(url), headers: headers)
+          .timeout(const Duration(seconds: 15));
+      log.append(
+        '========== [Usage Response] ${response.statusCode} ==========',
+      );
+      log.append(response.body);
+      return _parse(response.statusCode, response.body);
     } on TimeoutException {
-      return _RunResult.withError('queryTimeout');
-    } catch (_) {
-      return _RunResult.withError('queryFailed');
+      return const UsageResult('火山方舟', [], 'queryTimeout');
+    } catch (e) {
+      log.append('[VolcArk Usage Error] $e');
+      return const UsageResult('火山方舟', [], 'queryFailed');
+    } finally {
+      // 自创建的 client 用完即关，避免每分钟轮询泄漏底层 HttpClient 连接池/句柄。
+      // 注入的 client（测试用）由测试方管理，不在此关闭。
+      if (_ownsClient) client.close();
     }
   }
 
-  /// 查 arkcli plans get，返回 scope==[scope] 那条的 tier；未找到/格式不符返回 null。
-  /// [scope] 来自 usage plan 的 edition（如 personal/team/enterprise），不硬编码。
-  Future<String?> _fetchTierForScope(String? scope) async {
-    if (scope == null || scope.isEmpty) return null;
-    final res = await _runSafe(['plans', 'get']);
-    if (res.isError) return null;
+  /// 解析 `GetCodingPlanUsage` 响应 → [UsageResult]。
+  ///
+  /// 鉴权失败：HTTP 401/403，或 `ResponseMetadata.Error.Code` 命中签名/鉴权类
+  /// （Signature|InvalidAccessKey|AccessDenied|Authentication，大小写不敏感）
+  /// → `volcAkSkInvalid`。判定集合参考 `docs/main.js` `save-creds`，去掉过宽的
+  /// `NotFound`（避免资源/套餐未找到类业务错误被误判为 AK/SK 无效）。
+  /// 成功：`Result.QuotaUsage[]` 三档（session/weekly/monthly）映射
+  /// token5h/tokenWeekly/tokenMonthly；`ResetTimestamp` 秒级 ×1000→ms。
+  /// 空 / 无数据 → `queryFailed`。
+  UsageResult _parse(int statusCode, String body) {
     try {
-      final doc = jsonDecode(res.value!) as Map<String, dynamic>;
-      if (doc['ok'] == false) return null;
-      final plans = doc['plans'];
-      if (plans is! List) return null;
-      for (final p in plans) {
-        if (p is! Map<String, dynamic>) continue;
-        if (p['scope'] == scope) {
-          final tier = p['tier'];
-          if (tier is String && tier.isNotEmpty) return tier;
+      final doc = jsonDecode(body) as Map<String, dynamic>;
+
+      // 先看响应级错误（鉴权/签名类）。
+      final errMeta = doc['ResponseMetadata']?['Error'];
+      if (errMeta is Map) {
+        final code = (errMeta['Code'] as String?) ?? '';
+        if (_isAuthError(code)) {
+          // 签名失败除 AK/SK 错外，也可能是本机系统时间偏差过大（X-Date 不在窗口），
+          // 记一条排障 hint，避免用户反复重填凭证。
+          if (code.toLowerCase().contains('signature')) {
+            log.append(
+              '[VolcArk] 签名失败($code)：请检查 AK/SK 是否正确，以及本机系统时间'
+              '是否准确（偏差过大会导致签名失效）。',
+            );
+          }
+          return const UsageResult('火山方舟', [], 'volcAkSkInvalid');
         }
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// 解析 usage plan stdout → (title, items, errorMessage)。title 用 edition 兜底
-  /// （调用方 query 会用 plans get 的 tier 覆盖）。
-  _ParsedUsage _parseUsage(String stdout) {
-    try {
-      final doc = jsonDecode(stdout) as Map<String, dynamic>;
-      if (doc['ok'] == false) {
-        final err = doc['error'];
-        final msg = err is Map ? (err['message'] as String? ?? '') : '';
-        // refresh_token 失效（arkcli 登录凭证过期）等错误统一走 _friendlyMsg 转友好提示。
-        return _ParsedUsage('火山方舟', '', const [], _friendlyMsg(msg));
-      }
-      final items = doc['items'] as List;
-      if (items.isEmpty) {
-        return const _ParsedUsage('火山方舟', '', [], '查询失败，未找到数据');
-      }
-      final first = items[0] as Map<String, dynamic>;
-      final edition = first['edition'] as String? ?? '';
-      final title = edition.isEmpty
-          ? '火山方舟'
-          : '火山方舟 ${edition[0].toUpperCase()}${edition.substring(1)}';
-      final periods = first['periods'] as List? ?? [];
-      final usageItems = <UsageItem>[];
-      for (final p in periods) {
-        if (p is! Map<String, dynamic>) continue;
-        final label = p['label'] as String?;
-        final percent = p['percent'];
-        final resetAt = p['reset_at'];
-        if (label == null || percent is! num) continue;
-        final key = {
-          'session': 'token5h',
-          'weekly': 'tokenWeekly',
-          'monthly': 'tokenMonthly',
-        }[label];
-        if (key == null) continue;
-        usageItems.add(
-          UsageItem(key, percent.toDouble(), resetAt is int ? resetAt : null),
+        // 其它业务错误：无用量数据可显示；记下 Code/Message 便于排障（UI 兜底 queryFailed）。
+        log.append(
+          '[VolcArk] 业务错误 code=$code message=${errMeta['Message'] ?? ''}',
         );
+        return const UsageResult('火山方舟', [], 'queryFailed');
       }
-      if (usageItems.isEmpty) {
-        return _ParsedUsage(title, edition, const [], '查询失败，未找到数据');
+      if (statusCode == 401 || statusCode == 403) {
+        return const UsageResult('火山方舟', [], 'volcAkSkInvalid');
       }
-      return _ParsedUsage(title, edition, usageItems, null);
+
+      final result = doc['Result'];
+      if (result is! Map<String, dynamic>) {
+        return const UsageResult('火山方舟', [], 'queryFailed');
+      }
+      final qu = result['QuotaUsage'];
+      if (qu is! List || qu.isEmpty) {
+        return const UsageResult('火山方舟', [], 'queryFailed');
+      }
+
+      const levelToKey = {
+        'session': 'token5h',
+        'weekly': 'tokenWeekly',
+        'monthly': 'tokenMonthly',
+      };
+      final items = <UsageItem>[];
+      for (final q in qu) {
+        if (q is! Map<String, dynamic>) continue;
+        final level = q['Level'] as String?;
+        final percent = q['Percent'];
+        final key = level == null ? null : levelToKey[level];
+        if (key == null || percent is! num) continue;
+        final resetTs = q['ResetTimestamp'];
+        final resetMs = resetTs is num ? resetTs.toInt() * 1000 : null;
+        items.add(UsageItem(key, percent.toDouble(), resetMs));
+      }
+      if (items.isEmpty) {
+        return const UsageResult('火山方舟', [], 'queryFailed');
+      }
+      return UsageResult('火山方舟', items, null);
     } catch (_) {
-      return const _ParsedUsage('火山方舟', '', [], '查询失败，未找到数据');
+      return const UsageResult('火山方舟', [], 'queryFailed');
     }
   }
-}
 
-/// 一次 arkcli 子命令调用的结果（value 或 error 二选一）。
-class _RunResult {
-  final String? value;
-  final String? error;
-  _RunResult(this.value) : error = null;
-  _RunResult.withError(this.error) : value = null;
-  bool get isError => error != null;
-}
-
-/// usage plan 的解析中间结果（tier 由 query 另查 plans get 覆盖 title）。
-class _ParsedUsage {
-  final String title;
-  final String edition; // usage plan 的 edition，用作 plans get 的 scope 匹配键
-  final List<UsageItem> items;
-  final String? errorMessage;
-  const _ParsedUsage(this.title, this.edition, this.items, this.errorMessage);
+  /// Code 命中签名/鉴权类（大小写不敏感子串）→ 视为 AK/SK 无效或无权限。
+  /// 去掉了过宽的 NotFound（会误伤 ResourceNotFound 等业务错误）。
+  bool _isAuthError(String code) => _authErrorRe.hasMatch(code);
 }

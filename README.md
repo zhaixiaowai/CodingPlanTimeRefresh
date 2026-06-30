@@ -82,36 +82,21 @@ CodingPlanTimeRefresh/
 ### 支持厂商
 
 - **智谱 BigModel**（bigmodel.cn）：HTTP 查询用量配额。
-- **火山方舟 Volcengine Ark**（ark.cn-beijing.volces.com）：通过本地 `arkcli` 工具查询用量。
+- **火山方舟 Volcengine Ark**（ark.cn-beijing.volces.com）：用 Access Key / Secret Access Key 查询用量配额。
 
 ### 火山方舟用量前置条件
 
-火山方舟用量查询依赖官方 `arkcli` 命令行工具，请先安装并登录：
+火山方舟用量查询使用火山引擎长效 **Access Key / Secret Access Key**（OpenAPI V4 签名），无需安装本地工具、无需登录态：
 
-1. 安装 arkcli（参考 https://console.volcengine.com/ark/region:cn-beijing/docs/82379/2536875 ）
-2. 执行 `arkcli auth login` 完成登录
-3. 软件内通过 `arkcli usage plan` 自动查询
+1. 在火山引擎控制台 → 密钥管理（IAM）创建一对 Access Key / Secret Access Key。
+2. 软件内「设置」中，新增或编辑一个 API URL 含 `ark.cn-beijing.volces.com` 的配置时，会额外出现 **Access Key** / **Secret Access Key** 两个输入框，填入即可。
 
-未安装/未登录时，火山方舟用量框会提示「arkcli 未安装，参考 README」。
-
-#### 登录凭证过期
-
-`arkcli` 的登录凭证（refresh_token）有过期时间。如果长时间未使用 arkcli（既没有保持本软件常驻轮询，也没有手动执行过 arkcli 命令），凭证可能过期，此时火山方舟用量框会提示：
-
-> 登录凭证已过期，请重新执行 arkcli auth login
-
-解决办法：在终端重新执行一次登录即可恢复：
-
-```bash
-arkcli auth login
-```
-
-登录完成后，下一次用量轮询（最多 60 秒）即自动恢复。
+未配置或 AK/SK 无效时，火山方舟用量框会提示相应错误（如「未配置 Access Key / Secret Access Key」「AK/SK 无效或无权限」）。
 
 ### 配置（多组）
 
 - 主界面 ☰ 菜单 → 设置：管理多个模型配置（长按拖动排序、新增、删除、编辑）。
-- 每个配置填：名称、API URL、API Key、Model（智谱填模型名如 `glm-5.1`；火山填 endpoint id 如 `ep-xxx`）。
+- 每个配置填：名称、API URL、API Key、Model（智谱填模型名如 `glm-5.1`；火山填 endpoint id 如 `ep-xxx`）。火山方舟配置额外填 Access Key / Secret Access Key（仅用量查询用）。
 - 厂商由 API URL 自动识别。
 
 ### 构建
