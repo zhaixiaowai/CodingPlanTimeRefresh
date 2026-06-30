@@ -15,13 +15,15 @@ import '../services/scheduler_service.dart';
 import '../services/volc_ark_usage_provider.dart';
 import '../platform/window_controller.dart';
 import '../platform/settings_window_opener.dart';
-import 'widgets/config_panel.dart';
 import 'widgets/usage_frame.dart';
 
-/// 主窗口（mini 态）：顶部齿轮按钮 + 置顶外露 + 每 provider 一个 UsageFrame 垂直排列。
+/// 主窗口（mini 态）：顶部 4 按钮（置顶图标互切 / 设置 / 最小化 / 关闭）+ 每 provider
+/// 一个 UsageFrame 垂直排列。
 ///
-/// 旧 MAUI 单组 / 折叠三角 / 单一用量区在本设计中已废弃：mini 态固定显示所有
-/// provider 的用量框（ScrollView 可滚），LLL 触发与放大态由 T7/T8 接入。
+/// 设置按钮（齿轮）经 [settingsOpener] 打开独立设置窗口，并进入模态遮罩（半透黑 +
+/// AbsorbPointer 禁用主窗口交互）。设置窗口关闭回传 saved：true → reload 配置
+/// （[_applyConfig]），false → 仅移遮罩不 reload。放大态（旧 ConfigPanel 内嵌）
+/// 已由独立设置窗口取代，全组移除。
 class MainPage extends StatefulWidget {
   final AppConfig config;
   final ConfigService configService;
@@ -29,8 +31,8 @@ class MainPage extends StatefulWidget {
   final LogService log;
   final LocalizationService l10n;
   final WindowController window;
-  /// 设置窗口打开器（Task 5 接线使用；本任务仅占位保证 _App 传参可编译）。
-  final SettingsWindowOpener? settingsOpener;
+  /// 设置窗口打开器（生产为 desktop_multi_window 实现，测试注入 fake）。
+  final SettingsWindowOpener settingsOpener;
   const MainPage({
     super.key,
     required this.config,
@@ -39,7 +41,7 @@ class MainPage extends StatefulWidget {
     required this.log,
     required this.l10n,
     required this.window,
-    this.settingsOpener,
+    required this.settingsOpener,
   });
 
   @override
@@ -68,18 +70,13 @@ class _MainPageState extends State<MainPage> {
   Timer? _triggerTimer;
   double _lastContentHeight = 0;
 
+  // 设置窗口打开期间主窗口模态遮罩（半透黑 + AbsorbPointer 禁用交互）。
+  bool _settingsOpen = false;
+
   // 高度自适应测量键：挂在 mini 的整个内容（topBar + 各 UsageFrame + padding）
-  // 外层（SingleChildScrollView 的 child），量其完整渲染高作为窗口内容高。
+  // 外层，量其完整渲染高作为窗口内容高。
   final GlobalKey _contentKey = GlobalKey();
 
-  // 放大态：true 时窗口为 420×520，放大区固定显示 ConfigPanel（手动触发已删）。
-  bool _enlarged = false;
-
-  /// 放大态客户区尺寸：宽度固定 420；高度初始 520，随后按 ConfigPanel 实际内容高
-  /// 收缩（消除底部空白）。
-  static const double _enlargedW = 420;
-  static const double _enlargedInitH = 520;
-  double _lastEnlargedH = 0; // 上次收缩高，>2px 阈值防抖动
   // 下次触发时刻文本（全局触发，所有 provider 共享同一值）。每个 UsageFrame legend 后
   // 显示「<标题> : 下次触发在 HH:mm」。由 _onTriggerTick（6s）定期刷新 setState。
   String _nextTriggerText = '';
@@ -102,6 +99,15 @@ class _MainPageState extends State<MainPage> {
       (_) => _onTriggerTick(),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
+    // 注册设置窗口关闭回调：saved=true → reload 配置，false → 仅移遮罩不 reload。
+    // （生产 opener 的设置窗口 engine 退出时也兜底走此回调，saved=false。）
+    widget.settingsOpener.onClosed((saved) {
+      if (!mounted) return;
+      if (saved) {
+        _applyConfig(widget.configService.load());
+      }
+      setState(() => _settingsOpen = false);
+    });
   }
 
   @override
@@ -321,57 +327,13 @@ class _MainPageState extends State<MainPage> {
     }
   }
 
-  // ===== 放大态（T8）=====
-
-  /// 打开放大态：放大窗口到 420×520 并显示 ConfigPanel。
+  /// 应用（设置窗口保存后 reload 来的）新配置：对齐运行时态、语言、triggerHours，
+  /// 持久化，setState 重建。
   ///
-  /// 先 await enlarge（窗口先放大），再 setState 切放大态布局——避免放大态布局在
-  /// 旧 mini 尺寸窗口渲染一帧被裁剪。enlarge 内会先平移到屏内再 setSize。
-  // ignore: unused_element
-  Future<void> _openEnlarged() async {
-    await widget.window.enlarge(w: _enlargedW, h: _enlargedInitH);
-    if (!mounted) return;
-    // 放大态必须看清内容 → 强制全显（覆盖失焦半透），关闭时恢复按焦点。
-    await widget.window.setOpacityForcedActive(true);
-    // 重置阈值：新打开必然与 0 差异>2px，确保 config 首帧收缩生效（即便内容高
-    // 与上次关闭时相同也会重新设一次，避免残留 _lastEnlargedH 导致不收缩）。
-    _lastEnlargedH = 0;
-    setState(() => _enlarged = true);
-  }
-
-  /// 关闭放大态：缩回 mini（保留当前位置），由放大区 ConfigPanel 的保存/取消触发。
-  ///
-  /// 先 setState 切回 mini 布局（比放大态被裁好），再用旧高 shrinkToContent 缩回，
-  /// 最后排 PostFrame 重测到新内容高（修注释承诺的"修正"——配置增删 provider 后
-  /// 缩回会立即重测）。_resizeToContent 内 `if (_enlarged) return` 不影响（此处已置 false）。
-  Future<void> _closeEnlarged() async {
-    setState(() => _enlarged = false);
-    await widget.window.shrinkToContent(_lastContentHeight, _miniWidth());
-    // 关闭放大态：解除强制全显，恢复按焦点判定透明度。
-    await widget.window.setOpacityForcedActive(false);
-    if (mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
-    }
-  }
-
-  /// ConfigPanel 内容高度变化回调：放大态据此把窗口收缩到实际内容高，
-  /// 消除固定 520 的底部空白。>2px 阈值防抖动；非放大态忽略。
-  void _onConfigHeight(double h) {
-    if (!_enlarged) return;
-    if ((h - _lastEnlargedH).abs() > 2) {
-      _lastEnlargedH = h;
-      widget.window.setHeight(_enlargedW, h);
-    }
-  }
-
-  /// ConfigPanel 保存回调：写回 _config、持久化，并同步 _results/_usages（增删 provider）。
-  ///
-  /// 平移 T7 concern 收尾：用户在 ConfigPanel 增删/重排 providers 后，mini 态的
-  /// UsageFrame 列表依赖 `_config.providers`（已随 setState 更新），但运行时态
-  /// `_results`/`_usages` 是按 id 索引的 Map——新增 provider 没有
-  /// 有对应条目会显示空、删除 provider 的残留条目会泄漏。这里按「以新 providers 为准」
+  /// _results/_usages 按 id 索引——用户在设置窗口增删/重排 providers 后，新增 provider
+  /// 无对应条目会显示空、删除 provider 的残留条目会泄漏。这里按「以新 providers 为准」
   /// 对齐：新增 id 加空 ResultState、删除 id 清其 _results/_usages/lastTriggerKeys。
-  void _onConfigSaved(AppConfig next, bool langChanged) {
+  void _applyConfig(AppConfig next) {
     final oldIds = _config.providers.map((p) => p.id).toSet();
     final newIds = next.providers.map((p) => p.id).toSet();
     // 删除：旧有新无 → 清运行时态 + 触发键。
@@ -384,34 +346,27 @@ class _MainPageState extends State<MainPage> {
     for (final id in newIds.difference(oldIds)) {
       _results[id] = ResultState();
     }
+    final langChanged = _config.language != next.language;
     setState(() {
       _config = next;
-      if (langChanged) {
-        widget.l10n.initialize(next.language ?? 'auto');
-      }
+      if (langChanged) widget.l10n.initialize(next.language ?? 'auto');
     });
     widget.configService.save(_config);
-    _closeEnlarged();
     // triggerHours 改动后立即刷新「下次触发」文本，避免滞后到下个 6s tick。
     _updateNextTrigger();
     // 新增/改动的 provider 立即查一次用量，避免空白框等到下个 60s tick。
-    // （_closeEnlarged 已切回 mini 并排了 PostFrame 重测高度；这里异步查用量，
-    // 查完 setState 各框填充 + 再排一次 PostFrame 修正高度。）
     _queryAllUsage();
   }
 
-  /// 测量内容高度 → setHeight（高度自适应，仅超阈值才调避免抖动）。
-  ///
-  /// mini 态把 topBar + 各 UsageFrame 全放进 SingleChildScrollView 的 child，
-  /// 用 _contentKey 挂在该 child，量其 RenderBox 完整渲染高（含 topBar + 全部
-  /// 框 + padding），一次量全，避免分段相加漏算顶部。放大态不参与自适应
-  /// （窗口固定 420×520），直接 return，否则会用 520 污染 _lastContentHeight，
-  /// 导致缩回 mini 时 shrinkToContent(520)。
-  /// 当前语言下的 mini 窗口宽度（中文窄、英文宽）。语言切换后窗口宽度随之变。
+  /// 当前语言下的 mini 窗口宽度（统一英文版宽度 expandedWidth=260）。
   double _miniWidth() => ConfigService.widthForLanguage(widget.l10n.current);
 
+  /// 测量内容高度 → setHeight（高度自适应，仅超阈值才调避免抖动）。
+  ///
+  /// mini 态把 topBar + 各 UsageFrame 全放进 Column，用 _contentKey 挂在外层
+  /// Padding，量其 RenderBox 完整渲染高（含 topBar + 全部框 + padding），一次量全，
+  /// 避免分段相加漏算顶部。
   void _resizeToContent() {
-    if (_enlarged) return;
     if (!mounted) return;
     final contentBox =
         _contentKey.currentContext?.findRenderObject() as RenderBox?;
@@ -439,7 +394,17 @@ class _MainPageState extends State<MainPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF2D2D30),
-      body: _enlarged ? _buildEnlarged() : _buildMini(),
+      body: Stack(
+        children: [
+          _buildMini(),
+          // 设置窗口模态：半透遮罩 + 禁用主窗口交互（含拖动/按钮）。
+          if (_settingsOpen)
+            Container(
+              color: Colors.black.withValues(alpha: 0.4),
+              child: const AbsorbPointer(),
+            ),
+        ],
+      ),
     );
   }
 
@@ -476,14 +441,17 @@ class _MainPageState extends State<MainPage> {
               widget.configService.save(_config);
             },
           ),
-          // 设置（Task 5 接 settingsOpener.open()，此处先 disabled）。
+          // 设置：打开独立设置窗口并进入模态遮罩（关闭后按 saved 决定是否 reload）。
           IconButton(
             iconSize: 14,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minHeight: 22, minWidth: 22),
             tooltip: l.t('settings'),
             icon: const Icon(Icons.settings, color: Color(0xFFAAAAAA), size: 14),
-            onPressed: null,
+            onPressed: () {
+              setState(() => _settingsOpen = true);
+              widget.settingsOpener.open();
+            },
           ),
           // 最小化。
           IconButton(
@@ -554,18 +522,6 @@ class _MainPageState extends State<MainPage> {
           ],
         ),
       ),
-    );
-  }
-
-  /// 放大态：整个窗口铺满 ConfigPanel，**覆盖顶部齿轮+置顶行**
-  /// （面板自带取消关闭，不再外露顶部栏）。mini 态才显示齿轮+置顶。
-  Widget _buildEnlarged() {
-    return ConfigPanel(
-      initial: _config,
-      l10n: widget.l10n,
-      onSave: _onConfigSaved,
-      onCancel: _closeEnlarged,
-      onHeightChanged: _onConfigHeight,
     );
   }
 }

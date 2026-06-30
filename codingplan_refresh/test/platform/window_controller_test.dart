@@ -3,7 +3,7 @@ import 'package:codingplan_refresh/platform/window_controller.dart';
 
 /// 不触达 window_manager 通道：override applyOpacity 记录最终透明度，
 /// override isFocusedNow 固定返回失焦，直接调 onWindowFocus/onWindowBlur 验证路由。
-/// 观测「最终透明度」而非「中间 focused 参数」，真正验证 _forcedActive 覆盖逻辑。
+/// 观测「最终透明度」而非「中间 focused 参数」。
 class _FakeCtrl extends WindowController {
   double? lastOpacity;
   @override
@@ -28,44 +28,19 @@ void main() {
     expect(c.lastOpacity, WindowController.inactiveOpacity);
   });
 
-  test('setOpacityForcedActive(true) → 强制全显，即使 onWindowBlur 后仍 1.0', () async {
-    final c = _FakeCtrl();
-    await c.setOpacityForcedActive(true);
-    expect(c.lastOpacity, WindowController.activeOpacity);
-    c.onWindowBlur(); // 失焦但放大态强制全显
-    expect(c.lastOpacity, WindowController.activeOpacity);
-  });
-
-  test('setOpacityForcedActive(false) 后 onWindowBlur → 恢复 0.9', () async {
-    final c = _FakeCtrl();
-    await c.setOpacityForcedActive(true);
-    await c.setOpacityForcedActive(false); // isFocusedNow=false → 恢复按失焦
-    expect(c.lastOpacity, WindowController.inactiveOpacity);
-    c.onWindowBlur();
-    expect(c.lastOpacity, WindowController.inactiveOpacity);
-  });
-
   test('透明度常量：inactive 0.9 / active 1.0', () {
     expect(WindowController.inactiveOpacity, 0.9);
     expect(WindowController.activeOpacity, 1.0);
   });
 
-  test('opacityFor 纯函数：focused 优先，forcedActive 覆盖失焦', () {
+  test('opacityFor 纯函数：focused true→1.0，false→0.9', () {
     expect(
-      WindowController.opacityFor(focused: true, forcedActive: false),
+      WindowController.opacityFor(focused: true),
       WindowController.activeOpacity,
     );
     expect(
-      WindowController.opacityFor(focused: false, forcedActive: false),
+      WindowController.opacityFor(focused: false),
       WindowController.inactiveOpacity,
-    );
-    expect(
-      WindowController.opacityFor(focused: false, forcedActive: true),
-      WindowController.activeOpacity,
-    );
-    expect(
-      WindowController.opacityFor(focused: true, forcedActive: true),
-      WindowController.activeOpacity,
     );
   });
 }

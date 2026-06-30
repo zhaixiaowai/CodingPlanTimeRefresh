@@ -1,28 +1,22 @@
-import 'dart:io';
-import 'dart:ui' show Offset, Size;
+import 'dart:ui' show Size;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:window_manager/window_manager.dart';
 
 /// 窗口控制器：封装 `window_manager` 调用。
 ///
 /// 注意：`window_manager` 包内部用到 `Size`（来自 `dart:ui`）但未 re-export，
-/// 故本文件显式 `import 'dart:ui' show Offset, Size;`，否则引用本类的测试/构建会因
-/// `Size`/`Offset` 未定义而编译失败。方法为普通实例方法，便于测试以子类 override 注入。
+/// 故本文件显式 `import 'dart:ui' show Size;`，否则引用本类的测试/构建会因
+/// `Size` 未定义而编译失败。方法为普通实例方法，便于测试以子类 override 注入。
 class WindowController with WindowListener {
   /// 失焦半透常量（spec §6）。
   static const double inactiveOpacity = 0.9;
   static const double activeOpacity = 1.0;
 
-  /// 放大态强制全显覆盖（放大态窗口必须看清，不受失焦半透影响）。
-  bool _forcedActive = false;
-
   /// 初始化窗口：固定尺寸、居中、不可缩放、禁最大化、置顶。
   ///
-  /// 不设 maximumSize——它会把窗口钳在 mini 上限（318），导致 enlarge(420×520)
-  /// 被 maximumSize 钳制而放大失败（Critical）。放大/缩回都靠 enlarge/shrinkToContent
-  /// 直接 setSize 设定，不受 maximumSize 约束。仅保留 minimumSize=Size(width,80)
-  /// 防内容为空时窗口过矮。禁拖拽/最大化由 setResizable(false)+setMaximizable(false)
-  /// 实现（双平台，maximumSize 在此冗余且有害）。
+  /// 仅保留 minimumSize=Size(width,80) 防内容为空时窗口过矮。禁拖拽/最大化由
+  /// setResizable(false)+setMaximizable(false) 实现（双平台）。设置窗口由独立 engine
+  /// 内的 window_manager 自管尺寸（见 main.dart _runSettingsWindow）。
   Future<void> setup({
     required double width,
     required double height,
@@ -66,11 +60,9 @@ class WindowController with WindowListener {
   /// 关闭窗口 = 退出应用（主窗口关闭按钮）。
   Future<void> close() => windowManager.close();
 
-  /// 计算应使用的透明度：focused 或放大态强制 → 1.0，否则 0.9。纯函数便于单测。
-  static double opacityFor({
-    required bool focused,
-    required bool forcedActive,
-  }) => (focused || forcedActive) ? activeOpacity : inactiveOpacity;
+  /// 计算应使用的透明度：focused → 1.0，否则 0.9。纯函数便于单测。
+  static double opacityFor({required bool focused}) =>
+      focused ? activeOpacity : inactiveOpacity;
 
   /// 应用透明度到窗口。抽出便于测试 override 记录最终 opacity（绕开 channel）。
   ///
@@ -83,21 +75,9 @@ class WindowController with WindowListener {
   /// 当前窗口是否聚焦。抽出便于测试 override（绕开 windowManager.isFocused channel）。
   Future<bool> isFocusedNow() async => await windowManager.isFocused();
 
-  /// 按焦点设窗口透明度：focused 或放大态强制 → 1.0，否则 0.9。
+  /// 按焦点设窗口透明度：focused → 1.0，否则 0.9。
   Future<void> setOpacityByFocus(bool focused) async {
-    await applyOpacity(
-      opacityFor(focused: focused, forcedActive: _forcedActive),
-    );
-  }
-
-  /// 放大态强制全显（true）/ 关闭放大态恢复按焦点（false）。
-  Future<void> setOpacityForcedActive(bool forced) async {
-    _forcedActive = forced;
-    if (forced) {
-      await setOpacityByFocus(true);
-    } else {
-      await setOpacityByFocus(await isFocusedNow());
-    }
+    await applyOpacity(opacityFor(focused: focused));
   }
 
   @override
@@ -122,12 +102,6 @@ class WindowController with WindowListener {
   /// setContentSize 扣 28）。当前保持直接 setSize，待 Mac 实测后按需补偿。
   Future<void> setHeight(double width, double h) async {
     final frame = await _frameRectForClient(width, h);
-    await windowManager.setSize(Size(width, frame.height));
-  }
-
-  /// 缩回 mini（自适应高度，保留当前位置）。[width] 由调用方按当前语言传入。
-  Future<void> shrinkToContent(double contentHeight, double width) async {
-    final frame = await _frameRectForClient(width, contentHeight);
     await windowManager.setSize(Size(width, frame.height));
   }
 
@@ -165,36 +139,12 @@ class WindowController with WindowListener {
     }
   }
 
-  /// 放大到目标尺寸，若超出屏幕工作区则平移窗口留在屏内。
-  ///
-  /// 算法：取当前位置 + 目标尺寸，若右/下边超出屏幕宽/高，则把 x/y 内移到
-  /// `(screen - w/h)`（clamp 到 0..screen 防 w/h 超屏时越界）。先平移再 setSize，
-  /// 避免先放大再平移期间短暂溢出闪现。
-  /// 放大到目标**客户区**尺寸，若超出屏幕工作区则平移窗口留在屏内。
-  /// 内部按客户区算外框（含标题栏+边框补偿）后 setSize，与 setHeight 一致。
-  Future<void> enlarge({required double w, required double h}) async {
-    final frame = await _frameRectForClient(w, h);
-    final pos = await windowManager.getPosition();
-    final screen = _screenSize();
-    double x = pos.dx;
-    double y = pos.dy;
-    if (x + frame.width > screen.width) {
-      x = (screen.width - frame.width).clamp(0.0, screen.width);
-    }
-    if (y + frame.height > screen.height) {
-      y = (screen.height - frame.height).clamp(0.0, screen.height);
-    }
-    await windowManager.setPosition(Offset(x, y));
-    await windowManager.setSize(Size(frame.width, frame.height));
-  }
-
   /// 取主屏逻辑尺寸（物理像素 / DPR）。
   ///
   /// 用 PlatformDispatcher.displays.first（Display 是显示器，size 为物理像素），
-  /// 而非 views.first（窗口视图，其尺寸跟随窗口当前大小，不是屏幕）。enlarge 的
-  /// clamp 依此判断窗口放大后是否超出屏幕工作区。多屏时 displays.first = 主屏，
-  /// 若窗口不在主屏则定位可能不准——本工具单屏够用，待多屏再补。
+  /// 而非 views.first（窗口视图，其尺寸跟随窗口当前大小，不是屏幕）。
   /// displays 在首帧前可能为空，此时 fallback 到 views.first 仅防崩溃。
+  // ignore: unused_element
   Size _screenSize() {
     final displays = WidgetsBinding.instance.platformDispatcher.displays;
     if (displays.isEmpty) {

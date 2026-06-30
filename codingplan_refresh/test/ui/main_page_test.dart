@@ -7,15 +7,15 @@ import 'package:codingplan_refresh/services/llm_service.dart';
 import 'package:codingplan_refresh/services/localization_service.dart';
 import 'package:codingplan_refresh/services/log_service.dart';
 import 'package:codingplan_refresh/ui/main_page.dart';
-// T4: ConfigPanel 入口测试已停用，import 暂注释避免 unused 警告（Task 5 恢复）。
-// import 'package:codingplan_refresh/ui/widgets/config_panel.dart';
 import 'package:codingplan_refresh/ui/widgets/usage_frame.dart';
 // 置顶图标断言用 Symbols.push_pin / Symbols.offline_pin_off（与 main_page.dart 同源）。
 import 'package:material_symbols_icons/material_symbols_icons.dart';
 import 'package:codingplan_refresh/platform/window_controller.dart';
+import 'package:codingplan_refresh/platform/settings_window_opener.dart';
+import '../helpers/fake_settings_window_opener.dart';
 
-/// T6 mini 多框测试：验证每 provider 一个 UsageFrame、齿轮按钮打开 ConfigPanel、
-/// 置顶 checkbox 触发 setAlwaysOnTop。
+/// mini 多框测试：验证每 provider 一个 UsageFrame、置顶按钮触发 setAlwaysOnTop、
+/// 设置走独立窗口（模态遮罩 + reload）。
 ///
 /// 用 [FakeWindowController]（extends WindowController override 全部平台调用）
 /// 注入；providers 的 apiUrl 用非 bigmodel / 非 ark 域名，使 [_providerFor]
@@ -23,16 +23,9 @@ import 'package:codingplan_refresh/platform/window_controller.dart';
 class FakeWindowController extends WindowController {
   double? lastWidth;
   double? lastHeight;
-  double? enlargedW;
-  double? enlargedH;
-  double? shrunkH;
   bool? alwaysOnTop;
   int setHeightCalls = 0;
   int setAlwaysOnTopCalls = 0;
-  int enlargeCalls = 0;
-  int shrinkCalls = 0;
-  int forcedActiveCalls = 0;
-  List<bool> forcedValues = [];
   // T4: minimize/close/startDragging 调用计数。
   int minimizeCalls = 0;
   int closeCalls = 0;
@@ -53,28 +46,9 @@ class FakeWindowController extends WindowController {
   }
 
   @override
-  Future<void> enlarge({required double w, required double h}) async {
-    enlargedW = w;
-    enlargedH = h;
-    enlargeCalls++;
-  }
-
-  @override
-  Future<void> shrinkToContent(double contentHeight, double width) async {
-    shrunkH = contentHeight;
-    shrinkCalls++;
-  }
-
-  @override
   Future<void> setAlwaysOnTop(bool v) async {
     alwaysOnTop = v;
     setAlwaysOnTopCalls++;
-  }
-
-  @override
-  Future<void> setOpacityForcedActive(bool forced) async {
-    forcedActiveCalls++;
-    forcedValues.add(forced);
   }
 
   @override
@@ -99,9 +73,11 @@ void main() {
   tearDown(() => tmpDir.deleteSync(recursive: true));
 
   /// 构造一个最小可挂载的 MainPage（url 非 bigmodel / 非 ark → 无 provider 调用）。
+  /// [settingsOpener] 默认 FakeSettingsWindowOpener，便于模态/reload 测试注入。
   Widget buildApp({
     required AppConfig config,
     required FakeWindowController window,
+    SettingsWindowOpener? settingsOpener,
   }) {
     return MaterialApp(
       home: MainPage(
@@ -111,6 +87,7 @@ void main() {
         log: LogService(tmpDir),
         l10n: LocalizationService()..initialize('zh'),
         window: window,
+        settingsOpener: settingsOpener ?? FakeSettingsWindowOpener(),
       ),
     );
   }
@@ -135,16 +112,6 @@ void main() {
     expect(find.text('未知厂商，不支持用量查询'), findsNWidgets(2));
   });
 
-  // T4: 设置按钮本任务 disabled（Task 5 接 settingsOpener 走新窗口后重写）。
-  // 置顶由 Checkbox 改为 IconButton 图标互切（见下方 T4 新测试）。原「齿轮按钮点击 →
-  // 打开 ConfigPanel」「置顶 checkbox」两个测试用例覆盖的入口已变化，注释删除。
-  // testWidgets('齿轮按钮点击 → 打开 ConfigPanel，无「手动触发」菜单项', (tester) async {
-  //   ...
-  // });
-  // testWidgets('置顶 checkbox → 触发 window.setAlwaysOnTop + save', (tester) async {
-  //   ...
-  // });
-
   testWidgets('未知厂商 url：_providerFor 返回 null，无 provider 调用', (tester) async {
     final window = FakeWindowController();
     await tester.pumpWidget(
@@ -165,26 +132,6 @@ void main() {
     // 非 bigmodel / 非 ark → 显示「未知厂商」，不会触发 HTTP / arkcli。
     expect(find.text('未知厂商，不支持用量查询'), findsOneWidget);
   });
-
-  // ===== T8 放大态测试（T4 临时停用）=====
-  // 设置按钮本任务 disabled（onPressed:null），3 个放大态测试都靠 tap(Icons.settings)
-  // 进入放大态——入口已断，测试会失败。放大态代码本身保留（_openEnlarged 等），
-  // Task 5 设置走新窗口后会重写这组测试。整体块注释保留待恢复参考。
-  /*
-  testWidgets('齿轮「设置」→ 放大态 + 显示 ConfigPanel', (tester) async {
-    ...
-  });
-
-  testWidgets('ConfigPanel 保存后 → _results/_usages 同步 + 缩回 mini', (
-    tester,
-  ) async {
-    ...
-  });
-
-  testWidgets('ConfigPanel 取消按钮 → 缩回 mini', (tester) async {
-    ...
-  });
-  */
 
   // ===== mini 高度自适应回归测试 =====
 
@@ -210,21 +157,11 @@ void main() {
     // setHeight 应被调用（mini 高度自适应量到实际内容高）。
     expect(window.setHeightCalls, greaterThanOrEqualTo(1));
     // 高度应是实际内容高（顶部栏 + 2 个 UsageFrame），不是启动高 520 / 测试 surface 600。
-    // 修复前量 Scaffold（=600）会在此断言失败；修复后量内容（~120-180）通过。
     expect(window.lastHeight, lessThan(520));
     expect(window.lastHeight, greaterThan(50));
     // 宽度统一英文版宽度 expandedWidth=260（曾按语言中文 230 过窄、标题栏无法拖动）。
     expect(window.lastWidth, ConfigService.expandedWidth);
   });
-
-  // ===== T8 放大态强制全显接线（T4 临时停用：入口已断，见上方说明）=====
-  /*
-  testWidgets('打开放大态 → setOpacityForcedActive(true)，关闭 → false', (
-    tester,
-  ) async {
-    ...
-  });
-  */
 
   // ===== T4 顶部栏 4 按钮 + 全界面拖动 =====
 
@@ -295,5 +232,78 @@ void main() {
       const Offset(20, 20),
     );
     expect(window.startDraggingCalls, greaterThanOrEqualTo(1));
+  });
+
+  // ===== Task 5: 设置走独立窗口（模态遮罩 + reload）=====
+
+  testWidgets('点设置 → opener.open + 显遮罩；onClosed(false) → 移遮罩不 reload', (
+    tester,
+  ) async {
+    final window = FakeWindowController();
+    final op = FakeSettingsWindowOpener();
+    await tester.pumpWidget(buildApp(
+      config: AppConfig(
+        providers: [
+          ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k', name: '原名'),
+        ],
+      ),
+      window: window,
+      settingsOpener: op,
+    ));
+    await tester.pump();
+    // 关闭态基线：框架自带 1 个 AbsorbPointer（Navigator），不含模态。
+    final baselineAbsorbs = find.byType(AbsorbPointer).evaluate().length;
+    expect(baselineAbsorbs, 1);
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pump();
+    expect(op.openCalls, 1);
+    // 模态遮罩生效：模态 AbsorbPointer 叠加在框架自带的之上，数量 +1。
+    expect(find.byType(AbsorbPointer), findsNWidgets(baselineAbsorbs + 1));
+    op.simulateClosed(false);
+    await tester.pump();
+    expect(find.byType(AbsorbPointer), findsNWidgets(baselineAbsorbs)); // 遮罩移除
+    expect(find.textContaining('原名'), findsWidgets); // 未 reload，原名仍在
+  });
+
+  testWidgets('onClosed(true) → reload 配置（文件改后主窗口读取新名）', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('cfg5_');
+    final cs = ConfigService(dir);
+    cs.save(
+      AppConfig(
+        providers: [
+          ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k', name: '原名'),
+        ],
+      ),
+    );
+    final window = FakeWindowController();
+    final op = FakeSettingsWindowOpener();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MainPage(
+          config: cs.load(),
+          configService: cs,
+          llm: LlmService(LogService(dir)),
+          log: LogService(dir),
+          l10n: LocalizationService()..initialize('zh'),
+          window: window,
+          settingsOpener: op,
+        ),
+      ),
+    );
+    await tester.pump();
+    // 模拟设置窗口写盘改名后回传 saved=true。
+    cs.save(
+      AppConfig(
+        providers: [
+          ProviderConfig(id: 'p1', apiUrl: 'https://x', apiKey: 'k', name: '新名'),
+        ],
+      ),
+    );
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pump();
+    op.simulateClosed(true);
+    await tester.pump();
+    expect(find.textContaining('新名'), findsWidgets);
+    dir.deleteSync(recursive: true);
   });
 }
