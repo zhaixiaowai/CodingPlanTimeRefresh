@@ -30,15 +30,13 @@ class WindowController {
         titleBarStyle: TitleBarStyle.hidden,
       ),
       () async {
-        await windowManager.show();
-        await windowManager.focus();
+        // 尺寸/居中/minimumSize 已由 waitUntilReadyToShow 的 options 配好（其内部已 setSize）。
+        // 这里只配不可缩放/禁最大化/置顶。不调 windowManager.show()：show 时机由 native
+        // flutter_window.cpp 的 SetNextFrameCallback 控制——首帧渲染完成（有内容）才 show，
+        // 避免空白闪现。runApp 在 setup 之后，首帧在 widget 树构建后才渲染，show 时已有内容。
         await windowManager.setResizable(false);
-        // 平移旧 MAUI `IsMaximizable=false`（禁最大化按钮，亦拦截标题栏双击最大化）。
         await windowManager.setMaximizable(false);
         await windowManager.setAlwaysOnTop(alwaysOnTop);
-        await windowManager.setSize(Size(width, height));
-        // 失焦不调透明度：setOpacity 会触发 Windows 分层窗口，致失焦期间画面合成滞后、
-        // setState 后停在旧帧（残留旧画面，获焦停顿后恢复）。窗口始终不透明（1.0）。
       },
     );
   }

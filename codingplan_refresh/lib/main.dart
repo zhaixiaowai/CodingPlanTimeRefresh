@@ -35,7 +35,6 @@ Future<void> main(List<String> args) async {
 
   final window = WindowController();
   await window.setup(
-    // 启动宽度按当前语言（统一英文版宽度 expandedWidth=260）。
     width: ConfigService.widthForLanguage(l10n.current),
     height: ConfigService.expandedHeight,
     alwaysOnTop: config.isAlwaysOnTop,
