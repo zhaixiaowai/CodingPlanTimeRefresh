@@ -157,15 +157,12 @@ class UsageFrame extends StatelessWidget {
     );
   }
 
-  /// 进度条 + 内嵌百分比文字 + 重置时间（Stack：灰底条 + pct 着色填充 + 重置时间
-  /// 右对齐 + 居中百分比）。[isMcp] 时百分比前加 (mcp) 标注；[resetText] 非空时右对齐
-  /// 嵌在条内（半透白小字，绘制在百分比下层避免遮挡）。
+  /// 进度条 + 内嵌百分比文字。重置时间用 Tooltip：hover 进度条时由系统标准气泡显示
+  /// （非常驻，避免占位/遮挡百分比）。[isMcp] 时百分比前加 (mcp) 标注。
   Widget _progressBar(double pct, {required bool isMcp, String? resetText}) {
     final c = pct.clamp(0.0, 100.0);
-    // 文字用真实 pct（超配额时显示「150%」告警，不丢信息）；进度宽度/颜色用钳制值 c
-    // （视觉不应超满格）。
     final pctText = pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1);
-    return SizedBox(
+    final bar = SizedBox(
       height: 16,
       child: Stack(
         alignment: Alignment.center,
@@ -190,17 +187,6 @@ class UsageFrame extends StatelessWidget {
               ),
             ),
           ),
-          // 重置时间：右对齐嵌在进度条内（半透白小字，绘制在百分比下层避免遮挡）。
-          if (resetText != null)
-            Positioned(
-              right: 4,
-              child: Text(
-                resetText,
-                maxLines: 1,
-                softWrap: false,
-                style: const TextStyle(color: Color(0x99FFFFFF), fontSize: 9),
-              ),
-            ),
           // 内嵌百分比文字（白色，居中于整条，最后绘制在最上层）。mcp 行前加 (mcp) 标注。
           Text(
             isMcp ? '(mcp)$pctText%' : '$pctText%',
@@ -213,5 +199,8 @@ class UsageFrame extends StatelessWidget {
         ],
       ),
     );
+    // 重置时间：hover 进度条时由 Tooltip 系统标准气泡显示（无重置则不包）。
+    if (resetText == null || resetText.isEmpty) return bar;
+    return Tooltip(message: resetText, child: bar);
   }
 }

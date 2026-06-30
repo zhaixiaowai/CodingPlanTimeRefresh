@@ -22,18 +22,18 @@ void main() {
     expect(c.lastOpacity, WindowController.activeOpacity);
   });
 
-  test('onWindowBlur → 透明度 0.9', () {
+  test('onWindowBlur → 透明度 0.95', () {
     final c = _FakeCtrl();
     c.onWindowBlur();
     expect(c.lastOpacity, WindowController.inactiveOpacity);
   });
 
-  test('透明度常量：inactive 0.9 / active 1.0', () {
-    expect(WindowController.inactiveOpacity, 0.9);
+  test('透明度常量：inactive 0.95 / active 1.0', () {
+    expect(WindowController.inactiveOpacity, 0.95);
     expect(WindowController.activeOpacity, 1.0);
   });
 
-  test('opacityFor 纯函数：focused true→1.0，false→0.9', () {
+  test('opacityFor 纯函数：focused true→1.0，false→0.95', () {
     expect(
       WindowController.opacityFor(focused: true),
       WindowController.activeOpacity,
