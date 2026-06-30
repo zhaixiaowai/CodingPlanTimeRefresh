@@ -98,7 +98,9 @@ class _MainPageState extends State<MainPage> {
       const Duration(seconds: 6),
       (_) => _onTriggerTick(),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToContent());
+    // 启动不立即 _resizeToContent：首帧时用量数据未到（loading 占位偏小），若此时量高
+    // 缩窗会偏小。保持 setup 的启动高 318，等用量数据到达后（_queryAllUsage 末尾
+    // PostFrame）量真实内容高再缩。
   }
 
   @override
