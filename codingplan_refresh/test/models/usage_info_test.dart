@@ -34,4 +34,18 @@ void main() {
       );
     });
   });
+
+  group('formatPercent 整数取整、非整数 1 位', () {
+    test('整数百分比 → 无小数', () {
+      expect(formatPercent(34.0), '34');
+      expect(formatPercent(0.0), '0');
+      expect(formatPercent(100.0), '100');
+    });
+
+    test('非整数百分比 → 1 位小数', () {
+      expect(formatPercent(2.4590175), '2.5');
+      expect(formatPercent(16.025877866666665), '16.0');
+      expect(formatPercent(49.7), '49.7');
+    });
+  });
 }

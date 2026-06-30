@@ -163,22 +163,22 @@ class _MainPageState extends State<MainPage> {
   }
 
   /// 拼接窗口标题：按 _config.providers 顺序，每个 provider 一组
-  /// `{厂商}:{5h}/{周}`，多 provider 用空格连。
+  /// `{厂商}:{5h%}/{周%}`，多 provider 用空格连。
   /// - 厂商名从 vendorTitle 取空格前部分（如「智谱 Pro」→「智谱」）。
-  /// - 有 5h+周：`0/100`；只有 5h：`0`；只周：`100`。
-  /// 百分比四舍五入为整数；失败的 provider（errorMessage 非 null）跳过。
-  /// 全部无用量时返回应用名兜底。
+  /// - 有 5h+周：`0%/100%`；只有 5h：`0%`；只周：`100%`。
+  /// 百分比与进度条同格式（整数取整、非整数 1 位小数，见 [formatPercent]），各项带 %；
+  /// 失败的 provider（errorMessage 非 null）跳过。全部无用量时返回应用名兜底。
   String _buildWindowTitle() {
     final groups = <String>[];
     for (final p in _config.providers) {
       final u = _usages[p.id];
       if (u == null || u.errorMessage != null) continue;
-      int? h5 = _pctOf(u, 'token5h');
-      int? weekly = _pctOf(u, 'tokenWeekly');
+      final h5 = _pctOf(u, 'token5h');
+      final weekly = _pctOf(u, 'tokenWeekly');
       if (h5 == null && weekly == null) continue;
       final parts = <String>[];
-      if (h5 != null) parts.add('$h5');
-      if (weekly != null) parts.add('$weekly');
+      if (h5 != null) parts.add('${formatPercent(h5)}%');
+      if (weekly != null) parts.add('${formatPercent(weekly)}%');
       if (parts.isEmpty) continue;
       // 显示名优先用用户输入的 ProviderConfig.name，但保留 vendorTitle 的套餐部分
       // （「智谱 Pro」的「Pro」）——避免只替换名称时丢套餐。详见 usageDisplayTitle。
@@ -188,10 +188,11 @@ class _MainPageState extends State<MainPage> {
     return groups.isEmpty ? 'Coding Plan Time Refresh' : groups.join(' ');
   }
 
-  /// 从 UsageResult 取指定 labelKey 的百分比（四舍五入整数），无则 null。
-  int? _pctOf(UsageResult u, String labelKey) {
+  /// 从 UsageResult 取指定 labelKey 的百分比（原始 double），无则 null。
+  /// 显示格式化（取整/1 位小数）由调用方用 [formatPercent] 完成。
+  double? _pctOf(UsageResult u, String labelKey) {
     for (final it in u.items) {
-      if (it.labelKey == labelKey) return it.percentage.round();
+      if (it.labelKey == labelKey) return it.percentage;
     }
     return null;
   }

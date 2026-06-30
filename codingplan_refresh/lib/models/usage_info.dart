@@ -32,3 +32,8 @@ String usageDisplayTitle(String name, String vendorTitle) {
   final base = name.isNotEmpty ? name : vendor;
   return tier.isEmpty ? base : '$base $tier';
 }
+
+/// 百分比显示文本：整数取整（如 34），非整数保留 1 位小数（如 2.5）。
+/// usage_frame 进度条内嵌文字与 main_page 窗体标题共用此格式（单一事实源）。
+String formatPercent(double pct) =>
+    pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1);
