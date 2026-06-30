@@ -52,6 +52,21 @@ void main() {
     expect(l.t('resetOther').fmt([dt]), '重置 06/27 09:05');
   });
 
+  test('usageTooltip / usageTooltipNoReset 中英双语 fmt', () {
+    final zh = LocalizationService()..initialize('zh');
+    expect(
+      zh.t('usageTooltip').fmt(['5H', '34', '重置 09:05']),
+      '5H：已使用 34%，重置 09:05',
+    );
+    expect(zh.t('usageTooltipNoReset').fmt(['月', '12']), '月：已使用 12%');
+    final en = LocalizationService()..initialize('en');
+    expect(
+      en.t('usageTooltip').fmt(['5H', '34', 'Reset 09:05']),
+      '5H: 34% used, Reset 09:05',
+    );
+    expect(en.t('usageTooltipNoReset').fmt(['Month', '12']), 'Month: 12% used');
+  });
+
   test('已删 key 返回 key 本身（manualTrigger 等）', () {
     final l = LocalizationService()..initialize('zh');
     expect(l.t('manualTrigger'), 'manualTrigger');

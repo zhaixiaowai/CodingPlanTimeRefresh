@@ -41,7 +41,7 @@ void main() {
     expect(find.textContaining('重置'), findsNothing);
   });
 
-  testWidgets('Tooltip 包裹：默认不显示重置（hover 由系统气泡）', (tester) async {
+  testWidgets('Tooltip message 含完整提示（label+已用%+重置时间）', (tester) async {
     final l10n = LocalizationService()..initialize('zh');
     final result = UsageResult('智谱 Pro', [
       UsageItem('token5h', 34, 1782478364000),
@@ -54,8 +54,32 @@ void main() {
       ),
     );
     await tester.pump();
-    // 默认（未 hover）：Tooltip message 不在 tree，重置不显示。
-    expect(find.textContaining('重置'), findsNothing);
+    // Tooltip message 含 label(5H) + 已使用 + 百分比 + 重置时间。
+    final tooltip = tester.widget<Tooltip>(find.byType(Tooltip));
+    expect(tooltip.message, contains('5H'));
+    expect(tooltip.message, contains('已使用'));
+    expect(tooltip.message, contains('34%'));
+    expect(tooltip.message, contains('重置'));
+  });
+
+  testWidgets('Tooltip 无重置行：仅 label+已用%（不含重置）', (tester) async {
+    final l10n = LocalizationService()..initialize('zh');
+    final result = UsageResult('智谱 Pro', [
+      UsageItem('mcpMonthly', 12, null),
+    ], null);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UsageFrame(result: result, l10n: l10n, resetText: _reset),
+        ),
+      ),
+    );
+    await tester.pump();
+    final tooltip = tester.widget<Tooltip>(find.byType(Tooltip));
+    expect(tooltip.message, contains('月'));
+    expect(tooltip.message, contains('已使用'));
+    expect(tooltip.message, contains('12%'));
+    expect(tooltip.message!.contains('重置'), isFalse);
   });
 
   testWidgets('nextTriggerText 非空 → legend 标题后接提示', (tester) async {

@@ -108,6 +108,11 @@ class LocalizationService {
     },
     // ResetTextToday —— 占位 {0:HH:mm}
     'resetToday': {'zh': '重置 {0:HH:mm}', 'en': 'Reset {0:HH:mm}'},
+    // UsageTooltip —— 进度条 hover 完整提示：{0}=label(5H/周/月)、{1}=已用百分比、
+    // {2}=重置时间（含「重置 HH:mm」前缀，由调用方传入已本地化的重置文本，可空）。
+    'usageTooltip': {'zh': '{0}：已使用 {1}%，{2}', 'en': '{0}: {1}% used, {2}'},
+    // UsageTooltipNoReset —— 无重置时间的行（如 mcpMonthly 无 reset）：{0}=label、{1}=已用百分比。
+    'usageTooltipNoReset': {'zh': '{0}：已使用 {1}%', 'en': '{0}: {1}% used'},
     // ResetTextOther —— 占位 {0:MM/dd HH:mm}
     'resetOther': {'zh': '重置 {0:MM/dd HH:mm}', 'en': 'Reset {0:MM/dd HH:mm}'},
     // JokePrompt
