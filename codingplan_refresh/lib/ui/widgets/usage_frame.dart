@@ -162,7 +162,8 @@ class UsageFrame extends StatelessWidget {
   /// 进度条 + 内嵌百分比文字。hover 进度条由 Tooltip 显示完整提示
   /// 「{label}：已使用 {pct}%，重置 {time}」（多语言，[label] 为本地化的 5H/周/月，
   /// [resetText] 为已本地化的「重置 HH:mm」，可空则只显示「已使用 N%」）。
-  /// [isMcp] 时百分比前加 (mcp) 标注。
+  /// [isMcp] 时进度条不再前缀 (mcp)（与其他行对齐）；mcp 的区分放在 hover Tooltip
+  /// （label 用「(MCP)月」前缀）。
   Widget _progressBar(
     double pct, {
     required bool isMcp,
@@ -171,6 +172,12 @@ class UsageFrame extends StatelessWidget {
   }) {
     final c = pct.clamp(0.0, 100.0);
     final pctText = pct.toStringAsFixed(pct == pct.roundToDouble() ? 0 : 1);
+    // 进度条内嵌文字：高用量（pct≥80%）且有重置时，把已本地化的重置文本接在百分比后，
+    // 形如「80% (重置 09:05)」（一眼提示即将重置）；否则仅「NN%」。resetText 已含本地化
+    // 「重置 HH:mm」/「Reset HH:mm」前缀，直接拼接即可，无需额外本地化。
+    final hasReset = resetText != null && resetText.isNotEmpty;
+    final showResetInline = c >= 80 && hasReset;
+    final barText = showResetInline ? '$pctText% ($resetText)' : '$pctText%';
     final bar = SizedBox(
       height: 16,
       child: Stack(
@@ -196,9 +203,9 @@ class UsageFrame extends StatelessWidget {
               ),
             ),
           ),
-          // 内嵌百分比文字（白色，居中于整条，最后绘制在最上层）。mcp 行前加 (mcp) 标注。
+          // 内嵌百分比文字（白色，居中于整条，最后绘制在最上层）。
           Text(
-            isMcp ? '(mcp)$pctText%' : '$pctText%',
+            barText,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 11,
@@ -210,9 +217,11 @@ class UsageFrame extends StatelessWidget {
     );
     // hover 进度条 Tooltip：完整提示「label：已使用 N%[，重置 time]」。
     // 有重置：usageTooltip 三占位（label/pct/重置）；无重置：usageTooltipNoReset 两占位。
-    final msg = resetText == null || resetText.isEmpty
-        ? l10n.t('usageTooltipNoReset').fmt([label, pctText])
-        : l10n.t('usageTooltip').fmt([label, pctText, resetText]);
+    // mcp 行用 (MCP) 前缀的 label（mcpTipLabel），与普通「月」区分。
+    final tipLabel = isMcp ? l10n.t('mcpTipLabel') : label;
+    final msg = !hasReset
+        ? l10n.t('usageTooltipNoReset').fmt([tipLabel, pctText])
+        : l10n.t('usageTooltip').fmt([tipLabel, pctText, resetText]);
     return Tooltip(message: msg, child: bar);
   }
 }

@@ -67,6 +67,22 @@ void main() {
     expect(en.t('usageTooltipNoReset').fmt(['Month', '12']), 'Month: 12% used');
   });
 
+  test('mcpTipLabel 用于 mcp hover tooltip 的 (MCP) 前缀区分', () {
+    final zh = LocalizationService()..initialize('zh');
+    expect(zh.t('mcpTipLabel'), '(MCP)月');
+    // mcp 行无重置时 tooltip（label 用 (MCP) 前缀，区别于普通「月」）
+    expect(
+      zh.t('usageTooltipNoReset').fmt([zh.t('mcpTipLabel'), '12']),
+      '(MCP)月：已使用 12%',
+    );
+    final en = LocalizationService()..initialize('en');
+    expect(en.t('mcpTipLabel'), '(MCP)Month');
+    expect(
+      en.t('usageTooltipNoReset').fmt([en.t('mcpTipLabel'), '12']),
+      '(MCP)Month: 12% used',
+    );
+  });
+
   test('已删 key 返回 key 本身（manualTrigger 等）', () {
     final l = LocalizationService()..initialize('zh');
     expect(l.t('manualTrigger'), 'manualTrigger');

@@ -113,6 +113,9 @@ class LocalizationService {
     'usageTooltip': {'zh': '{0}：已使用 {1}%，{2}', 'en': '{0}: {1}% used, {2}'},
     // UsageTooltipNoReset —— 无重置时间的行（如 mcpMonthly 无 reset）：{0}=label、{1}=已用百分比。
     'usageTooltipNoReset': {'zh': '{0}：已使用 {1}%', 'en': '{0}: {1}% used'},
+    // MCP Tooltip 标签 —— mcp 行 hover 时用的 label 前缀（(MCP) 区分普通「月」与 MCP 的「月」）。
+    // 配合 usageTooltip/usageTooltipNoReset：形如「(MCP)月：已使用 12%」/「(MCP)Month: 12% used」。
+    'mcpTipLabel': {'zh': '(MCP)月', 'en': '(MCP)Month'},
     // ResetTextOther —— 占位 {0:MM/dd HH:mm}
     'resetOther': {'zh': '重置 {0:MM/dd HH:mm}', 'en': 'Reset {0:MM/dd HH:mm}'},
     // JokePrompt
