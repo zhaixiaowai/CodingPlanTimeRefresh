@@ -1,4 +1,4 @@
-import 'dart:ui' show Size;
+import 'dart:ui' show Offset, Size;
 import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:window_manager/window_manager.dart';
 
@@ -105,6 +105,27 @@ class WindowController with WindowListener {
     await windowManager.setSize(Size(width, frame.height));
   }
 
+  /// 放大窗口到目标客户区尺寸，若超出屏幕工作区则平移窗口留屏内。
+  ///
+  /// 设置视图放大时，窗口若在屏幕边缘（右/下），放大后右/下边会溢出被截，故先按
+  /// 新外框尺寸 + 当前位置判断溢出，溢出则平移到 (screen - frame)。先平移再 setSize，
+  /// 避免先放大再平移期间短暂溢出闪现。不溢出时 setPosition 到原位（无害）。
+  Future<void> enlarge(double clientW, double clientH) async {
+    final frame = await _frameRectForClient(clientW, clientH);
+    final pos = await windowManager.getPosition();
+    final screen = _screenSize();
+    double x = pos.dx;
+    double y = pos.dy;
+    if (x + frame.width > screen.width) {
+      x = (screen.width - frame.width).clamp(0.0, screen.width);
+    }
+    if (y + frame.height > screen.height) {
+      y = (screen.height - frame.height).clamp(0.0, screen.height);
+    }
+    await windowManager.setPosition(Offset(x, y));
+    await windowManager.setSize(Size(frame.width, frame.height));
+  }
+
   /// 按「客户区尺寸=传入的 w/h」反推窗口外框尺寸（含标题栏+边框补偿）。
   ///
   /// 零依赖方案（不调 win32 AdjustWindowRectEx，避免 API 版本差异）：用
@@ -144,7 +165,6 @@ class WindowController with WindowListener {
   /// 用 PlatformDispatcher.displays.first（Display 是显示器，size 为物理像素），
   /// 而非 views.first（窗口视图，其尺寸跟随窗口当前大小，不是屏幕）。
   /// displays 在首帧前可能为空，此时 fallback 到 views.first 仅防崩溃。
-  // ignore: unused_element
   Size _screenSize() {
     final displays = WidgetsBinding.instance.platformDispatcher.displays;
     if (displays.isEmpty) {

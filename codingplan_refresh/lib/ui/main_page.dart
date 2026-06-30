@@ -510,7 +510,7 @@ class _MainPageState extends State<MainPage> {
   /// 打开设置视图：先放大窗口到设置尺寸，再 setState 切视图（避免设置内容在
   /// mini 尺寸窗口渲染一帧被裁）。
   Future<void> _openSettings() async {
-    await widget.window.setHeight(_settingsW, _settingsH);
+    await widget.window.enlarge(_settingsW, _settingsH);
     if (!mounted) return;
     setState(() => _view = 'settings');
   }
@@ -532,7 +532,7 @@ class _MainPageState extends State<MainPage> {
     final target = contentH + 22 + 4; // 标题栏 22 + 底部余量
     if ((target - _lastSettingsH).abs() > 2) {
       _lastSettingsH = target;
-      widget.window.setHeight(_settingsW, target);
+      widget.window.enlarge(_settingsW, target);
     }
   }
 

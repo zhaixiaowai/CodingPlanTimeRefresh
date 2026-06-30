@@ -45,6 +45,11 @@ class FakeWindowController extends WindowController {
   }
 
   @override
+  Future<void> enlarge(double clientW, double clientH) async {
+    // 测试不验证平移/setSize，仅避免 windowManager channel 调用。
+  }
+
+  @override
   Future<void> setAlwaysOnTop(bool v) async {
     alwaysOnTop = v;
     setAlwaysOnTopCalls++;
