@@ -60,6 +60,11 @@ class LocalizationService {
     'loading': {'zh': '调用中...', 'en': 'Calling...'},
     // UsageLoadingText —— 用量查询中（首次无旧数据时用量框占位）
     'usageLoading': {'zh': '用量查询中...', 'en': 'Loading usage...'},
+    // NoProviderHint —— 未配置任何 provider 时主界面占位提示（点击可打开设置添加）
+    'noProviderHint': {
+      'zh': '暂未配置模型，点击打开设置添加',
+      'en': 'No provider configured. Open settings to add one.',
+    },
     // ErrorMessageFormat —— 占位 {0}
     'errorMessage': {'zh': '错误，等待重试: {0}', 'en': 'Error, retrying: {0}'},
     // 用量查询失败兜底（provider/解析器返回此 key，UI 层 l10n.t 翻译）

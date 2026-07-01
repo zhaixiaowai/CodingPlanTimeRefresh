@@ -500,28 +500,48 @@ class _MainPageState extends State<MainPage> {
               _buildTopBar(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: _config.providers
-                      .map(
-                        (p) => UsageFrame(
-                          result:
-                              _usages[p.id] ?? const UsageResult('', [], null),
-                          l10n: l,
-                          resetText: _resetText,
-                          displayName: p.name,
-                          // _usages[p.id]==null：从未查到过（首次查询中）→ loading 占位；
-                          // 非 null（有旧数据或错误）→ 显示旧内容，刷新查询无感。
-                          isLoading: _usages[p.id] == null,
-                          // 下次触发提示（全局共享同一值），显示在每个用量框 legend 后。
-                          nextTriggerText: _nextTriggerText,
-                        ),
-                      )
-                      .toList(),
-                ),
+                child: _config.providers.isEmpty
+                    ? _buildEmptyHint(l)
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: _config.providers
+                            .map(
+                              (p) => UsageFrame(
+                                result: _usages[p.id] ??
+                                    const UsageResult('', [], null),
+                                l10n: l,
+                                resetText: _resetText,
+                                displayName: p.name,
+                                // _usages[p.id]==null：从未查到过（首次查询中）→ loading 占位；
+                                // 非 null（有旧数据或错误）→ 显示旧内容，刷新查询无感。
+                                isLoading: _usages[p.id] == null,
+                                // 下次触发提示（全局共享同一值），显示在每个用量框 legend 后。
+                                nextTriggerText: _nextTriggerText,
+                              ),
+                            )
+                            .toList(),
+                      ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// 未配置任何 provider 时的占位提示：居中灰字引导去设置添加，整块可点击直接
+  /// 打开设置面板。providers 为空时 [_buildMini] 只剩顶部栏会一片空白，故用此占位
+  /// 兜底（同时给 _resizeToContent 一个非零内容高，窗口不至于塌缩到只剩标题栏）。
+  Widget _buildEmptyHint(LocalizationService l) {
+    return GestureDetector(
+      onTap: _openSettings,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
+        child: Text(
+          l.t('noProviderHint'),
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 12),
         ),
       ),
     );
