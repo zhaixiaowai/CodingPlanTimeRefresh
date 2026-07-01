@@ -2,77 +2,84 @@
 
 # Coding Plan Time Refresh
 
-一个 .NET MAUI 桌面小工具，定时调用 LLM API 并在界面上显示 API 用量百分比。主要用于保持智谱 BigModel 编程套餐额度处于活跃状态。
+一个 Flutter 桌面小工具，定时调用 LLM API 并在桌面常驻显示多厂商 API 用量百分比。主要用于保持智谱 BigModel 编程套餐等额度处于活跃状态。由旧 .NET MAUI 版迁移而来。
 
 ## 预览
 
-| 正常视图 | 折叠视图 |
+| 主视图 | mini 视图 |
 |:---:|:---:|
-| ![正常视图](previews/normal.png) | ![折叠视图](previews/mini.png) |
+| ![主视图](previews/normal.png) | ![mini 视图](previews/mini.png) |
 
-| 设置面板 | 触发弹窗 |
-|:---:|:---:|
-| ![设置面板](previews/setting.png) | ![触发弹窗](previews/makeajoke.png) |
+| 设置面板 |
+|:---:|
+| ![设置面板](previews/setting.png) |
 
 ## 功能
 
-- 定时自动触发 LLM（01:00、07:00、13:00、19:00，每 6 秒检查一次）
-- 手动触发大模型调用
-- 流式显示 LLM 返回结果
-- 实时显示 BigModel 用量配额（5H / 周 / 月），目前仅支持智谱 Coding Plan，其他平台后续补充
-- 窗口置顶、折叠/展开
-- 配置加密存储（AES-256-CBC）
+- 定时自动触发 LLM 保活（01:00、07:00、13:00、19:00，每 6 秒检查一次；失败自动重试 3 次，间隔 5 秒）
+- 实时显示多厂商用量配额（智谱 5H / 周 / 月；火山方舟），常驻桌面
+- 窗口置顶
+- 配置加密存储（AES-256-CBC），兼容继承旧 MAUI 版配置
 - 支持中英文切换
-- 支持 Windows（WinUI 3）和 macOS（MacCatalyst）
+- 支持 Windows 与 macOS
+
+## 支持厂商
+
+- **智谱 BigModel**（bigmodel.cn）：HTTP 查询用量配额。
+- **火山方舟 Volcengine Ark**（ark.cn-beijing.volces.com）：用 Access Key / Secret Access Key 查询用量配额。
+
+## 火山方舟用量前置条件
+
+火山方舟用量查询使用火山引擎长效 **Access Key / Secret Access Key**（OpenAPI V4 签名），无需安装本地工具、无需登录态：
+
+1. 在火山引擎控制台 → 密钥管理（IAM）创建一对 Access Key / Secret Access Key。
+2. 软件内「设置」中，新增或编辑一个 API URL 含 `ark.cn-beijing.volces.com` 的配置时，会额外出现 **Access Key** / **Secret Access Key** 两个输入框，填入即可。
+
+未配置或 AK/SK 无效时，火山方舟用量框会提示相应错误（如「未配置 Access Key / Secret Access Key」「AK/SK 无效或无权限」）。
 
 ## 环境要求
 
-- .NET 10.0 SDK
-- Windows 10 1809+ 或 macOS 15.0+
+- Flutter stable（含桌面支持）
+- Windows 10+ 或 macOS
 
 ## 构建与运行
 
+源码位于 `codingplan_refresh/` 子目录。
+
 ```bash
-# 构建 (Windows)
-dotnet build CodingPlanTimeRefresh/CodingPlanTimeRefresh.csproj -f net10.0-windows10.0.19041.0
+cd codingplan_refresh
 
 # 运行 (Windows)
-dotnet run --project CodingPlanTimeRefresh/CodingPlanTimeRefresh.csproj -f net10.0-windows10.0.19041.0
+flutter run -d windows
 
-# 发布 (Windows, 自包含)
-dotnet publish CodingPlanTimeRefresh/CodingPlanTimeRefresh.csproj -f net10.0-windows10.0.19041.0 -c Release -r win-x64
+# 发布 (Windows)
+flutter build windows --release
 
-# 构建 (Mac)
-dotnet build CodingPlanTimeRefresh/CodingPlanTimeRefresh.csproj -f net10.0-maccatalyst
+# 发布 (macOS)
+flutter build macos --release
 ```
-
-也可直接使用项目根目录的发布脚本：
-
-- `publish-win.bat` — Windows 自包含发布并清理多余语言包
-- `publish-mac.sh` — macOS 发布
 
 ## 配置
 
-首次运行会显示配置面板，填入：
-
-- **API URL** — OpenAI 兼容的聊天接口地址（如 `https://open.bigmodel.cn/api/paas/v4/chat/completions`）
-- **API Key** — 对应的 API 密钥
-- **Model** — 模型名称（默认 `glm-5.1`）
-
-配置加密存储于 `data/config.dat`。
+- 主界面齿轮 → 设置：管理多个模型配置（长按拖动排序、新增、删除、编辑）。
+- 每个配置填：名称、API URL、API Key、Model（智谱填模型名如 `glm-5.1`；火山填 endpoint id 如 `ep-xxx`）。火山方舟配置额外填 Access Key / Secret Access Key（仅用量查询用）。
+- 厂商由 API URL 自动识别。
+- 配置加密存储，兼容读取旧 MAUI 版的 `config.dat`（AES-256-CBC，同 key/IV，自动迁移）。
 
 ## 项目结构
 
 ```
-CodingPlanTimeRefresh/
-├── App.xaml.cs              # 窗口生命周期管理
-├── MainPage.xaml(cs)        # 主界面 UI 与逻辑
-├── LLMService.cs            # LLM 调用与用量查询
-├── ConfigService.cs         # 配置加密读写
-├── AppConfig.cs             # 配置模型
-├── LogService.cs            # 日志服务
-├── Resources/Strings/       # 中英文资源文件
-└── Platforms/               # 平台特定代码
+codingplan_refresh/
+├── lib/
+│   ├── main.dart              # 入口：窗口/单实例/配置/本地化初始化
+│   ├── models/                # AppConfig、UsageInfo
+│   ├── services/              # 配置/日志/LLM/调度/本地化/用量 provider
+│   ├── platform/              # 窗口控制、单实例
+│   ├── ui/                    # 主界面与 widgets
+│   └── utils/                 # AES、SSE、签名
+├── test/                      # 单元测试
+├── windows/ macos/            # 平台工程
+└── pubspec.yaml
 ```
 
 ## License

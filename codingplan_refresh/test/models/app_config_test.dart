@@ -1,0 +1,156 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:codingplan_refresh/models/app_config.dart';
+
+void main() {
+  test('新格式多组往返', () {
+    final c = AppConfig(
+      providers: [
+        ProviderConfig(
+          id: 'a',
+          name: '智谱',
+          apiUrl: 'https://x',
+          apiKey: 'k',
+          model: 'glm-5.1',
+        ),
+        ProviderConfig(
+          id: 'b',
+          name: '火山',
+          apiUrl: 'https://ark',
+          apiKey: 'k2',
+          model: 'ep-1',
+        ),
+      ],
+      isAlwaysOnTop: true,
+      language: 'zh',
+      lastTriggerKeys: {'a': '2026-06-27 01:00'},
+    );
+    final json = c.toJson();
+    expect(json['Providers'], isA<List>());
+    final loaded = AppConfig.fromJson(json);
+    expect(loaded.providers.length, 2);
+    expect(loaded.providers[0].id, 'a');
+    expect(loaded.providers[1].name, '火山');
+    expect(loaded.lastTriggerKeys['a'], '2026-06-27 01:00');
+  });
+
+  test('旧单组格式迁移为 providers[0]', () {
+    final legacy = <String, dynamic>{
+      'IsAlwaysOnTop': false,
+      'ApiUrl': 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+      'ApiKey': 'sk-x',
+      'Model': 'glm-5.1',
+      'LastAutoTriggerKey': '2026-06-27 01:00',
+      'IsCollapsed': true, // 应被丢弃（新模型无此字段）
+      'Language': 'zh',
+    };
+    final c = AppConfig.fromJson(legacy);
+    expect(c.providers.length, 1);
+    expect(c.providers[0].apiUrl, contains('bigmodel.cn'));
+    expect(c.lastTriggerKeys[c.providers[0].id], '2026-06-27 01:00');
+    // IsCollapsed 无对应字段，已丢弃（无 isCollapsed 属性可验）
+  });
+
+  test('ProviderConfig.copyWith 保留 id', () {
+    final p = ProviderConfig(id: 'x', name: 'a');
+    final p2 = p.copyWith(name: 'b');
+    expect(p2.id, 'x');
+    expect(p2.name, 'b');
+  });
+
+  test('triggerHours 默认 [1,7,13,19]', () {
+    final c = AppConfig(providers: []);
+    expect(c.triggerHours, [1, 7, 13, 19]);
+  });
+
+  test('triggerHours 序列化往返', () {
+    final c = AppConfig(
+      providers: [ProviderConfig(id: 'a', name: 'x')],
+      triggerHours: [2, 8, 14, 20],
+    );
+    final loaded = AppConfig.fromJson(c.toJson());
+    expect(loaded.triggerHours, [2, 8, 14, 20]);
+  });
+
+  test('新格式 JSON 无 TriggerHours → 默认', () {
+    final json = <String, dynamic>{
+      'Providers': [
+        {
+          'Id': 'a',
+          'Name': 'x',
+          'ApiUrl': '',
+          'ApiKey': '',
+          'Model': 'glm-5.1',
+        },
+      ],
+      'IsAlwaysOnTop': false,
+    };
+    final c = AppConfig.fromJson(json);
+    expect(c.triggerHours, [1, 7, 13, 19]);
+  });
+
+  test('旧单组格式迁移 → triggerHours 默认', () {
+    final legacy = <String, dynamic>{
+      'ApiUrl': 'https://x',
+      'ApiKey': 'k',
+      'Model': 'glm-5.1',
+    };
+    final c = AppConfig.fromJson(legacy);
+    expect(c.triggerHours, [1, 7, 13, 19]);
+  });
+
+  test('triggerHours 越界值（0-23 外）被过滤，防 checkTrigger 永不命中', () {
+    final c = AppConfig(
+      providers: [ProviderConfig(id: 'a', name: 'x')],
+      triggerHours: [1, 7, 25, -1, 13, 19],
+    );
+    final loaded = AppConfig.fromJson(c.toJson());
+    // 25 与 -1 被过滤（否则 nextTrigger 靠 DateTime 规范化显示「01:00」但
+    // checkTrigger 的 now.hour==25 永不命中，保活静默失效）。
+    expect(loaded.triggerHours, [1, 7, 13, 19]);
+  });
+
+  test('accessKey/secretKey 序列化往返（火山方舟 AK/SK）', () {
+    final c = AppConfig(
+      providers: [
+        ProviderConfig(
+          id: 'volc',
+          name: '火山',
+          apiUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+          apiKey: 'llm-key',
+          model: 'ep-xxx',
+          accessKey: 'AKxxx',
+          secretKey: 'SKxxx',
+        ),
+      ],
+    );
+    final loaded = AppConfig.fromJson(c.toJson());
+    expect(loaded.providers[0].accessKey, 'AKxxx');
+    expect(loaded.providers[0].secretKey, 'SKxxx');
+  });
+
+  test('旧配置无 AccessKey/SecretKey → 默认空（向后兼容）', () {
+    final json = <String, dynamic>{
+      'Providers': [
+        {
+          'Id': 'a',
+          'Name': 'x',
+          'ApiUrl': 'https://x',
+          'ApiKey': 'k',
+          'Model': 'glm-5.1',
+        },
+      ],
+      'IsAlwaysOnTop': false,
+    };
+    final loaded = AppConfig.fromJson(json);
+    expect(loaded.providers[0].accessKey, '');
+    expect(loaded.providers[0].secretKey, '');
+  });
+
+  test('copyWith 保留未传入的 accessKey/secretKey', () {
+    final p = ProviderConfig(id: 'x', accessKey: 'AK', secretKey: 'SK');
+    final p2 = p.copyWith(name: 'renamed');
+    expect(p2.accessKey, 'AK');
+    expect(p2.secretKey, 'SK');
+    expect(p2.name, 'renamed');
+  });
+}
