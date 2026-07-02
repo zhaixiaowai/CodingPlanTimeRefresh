@@ -6,17 +6,13 @@ A Flutter desktop utility that periodically calls LLM APIs and displays multi-ve
 
 ## Preview
 
-| Main View | mini View |
+| Main View | Settings Panel |
 |:---:|:---:|
-| ![Main View](previews/normal.png) | ![mini View](previews/mini.png) |
-
-| Settings Panel |
-|:---:|
-| ![Settings Panel](previews/setting.png) |
+| ![Main View](previews/normal.png) | ![Settings Panel](previews/setting.png) |
 
 ## Features
 
-- Scheduled automatic LLM triggering (01:00, 07:00, 13:00, 19:00, checked every 6 seconds; 3 retries with 5s interval on failure)
+- Scheduled automatic LLM keep-alive: trigger hours are customizable in Settings (default 01:00, 07:00, 13:00, 19:00, checked every 6 seconds; 3 retries with 5s interval on failure; uncheck all to disable)
 - Real-time multi-vendor usage quota display (Zhipu 5H / Weekly / Monthly; Volcengine Ark), resident on desktop
 - Always-on-top window
 - Encrypted config storage (AES-256-CBC), backward compatible with the former MAUI edition
@@ -61,7 +57,7 @@ flutter build macos --release
 
 ## Configuration
 
-- Main view gear icon → Settings: manage multiple model configs (long-press drag to reorder, add, delete, edit).
+- Main view gear icon → Settings: manage multiple model configs (long-press drag to reorder, add, delete, edit), and pick the daily auto-trigger hours in "Trigger Hours" (0-23, default 1/7/13/19; uncheck all to disable scheduled keep-alive).
 - Each config fills in: Name, API URL, API Key, Model (Zhipu: model name like `glm-5.1`; Volcengine: endpoint id like `ep-xxx`). Volcengine configs additionally require Access Key / Secret Access Key (usage query only).
 - Provider is auto-detected from the API URL.
 - Config is encrypted and backward compatible with the former MAUI edition's `config.dat` (AES-256-CBC, same key/IV, auto-migrated).
