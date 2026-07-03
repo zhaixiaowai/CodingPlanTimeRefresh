@@ -3,6 +3,7 @@ import 'package:codingplan_refresh/models/usage_info.dart';
 import 'package:codingplan_refresh/services/log_service.dart';
 import 'package:codingplan_refresh/services/usage_parser.dart';
 import 'package:codingplan_refresh/services/usage_provider.dart';
+import 'package:codingplan_refresh/utils/user_agent.dart';
 
 /// 智谱 BigModel 用量 provider：GET quota/limit，调用 [parseBigmodelUsage] 解析为
 /// [UsageResult]（vendorTitle 默认「智谱」）。失败/无数据统一返回
@@ -21,16 +22,15 @@ class BigmodelUsageProvider implements UsageProvider {
       return const UsageResult('智谱', [], 'queryFailed');
     }
     try {
-      log.append(
-        '========== [Usage Request] ==========\nGET $_url\nAuthorization: ***',
-      );
+      final headers = {
+        'Authorization': apiKey,
+        ...kBrowserHeaders,
+      };
+      log.appendRequestLog('Usage', 'GET', _url, headers);
       final response = await http
-          .get(Uri.parse(_url), headers: {'Authorization': apiKey})
+          .get(Uri.parse(_url), headers: headers)
           .timeout(const Duration(seconds: 120));
-      log.append(
-        '========== [Usage Response] ${response.statusCode} ==========',
-      );
-      log.append(response.body);
+      log.appendResponseLog('Usage', response.statusCode, response.body);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return const UsageResult('智谱', [], 'queryFailed');
       }

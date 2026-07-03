@@ -5,6 +5,7 @@ import 'package:codingplan_refresh/models/usage_info.dart';
 import 'package:codingplan_refresh/services/log_service.dart';
 import 'package:codingplan_refresh/services/usage_provider.dart';
 import 'package:codingplan_refresh/utils/volc_v4_signer.dart';
+import 'package:codingplan_refresh/utils/user_agent.dart';
 
 /// 火山方舟用量：用 AK/SK + 火山引擎 OpenAPI V4 签名，直接 GET `GetCodingPlanUsage`
 /// 查询（取代旧 arkcli 子进程方案）。AK/SK 为用户在设置面板填写的长效凭证，
@@ -64,7 +65,7 @@ class VolcArkUsageProvider implements UsageProvider {
     // query 顺序须与签名 canonical query 一致（按 key 字母序：Action < Version），
     // 故字面量拼接 Action 在前，不交给 Uri 重排。
     final url = 'https://$_host/?Action=$_action&Version=$_version';
-    final headers = buildVolcSignedHeaders(
+    final signedHeaders = buildVolcSignedHeaders(
       ak: ak,
       sk: sk,
       host: _host,
@@ -74,19 +75,15 @@ class VolcArkUsageProvider implements UsageProvider {
       version: _version,
       xDate: volcXDate(_now()),
     );
+    // User-Agent 及浏览器伴随头不参与 V4 签名（签名头仅 host/x-date/x-content-sha256），安全附加。
+    final headers = {...signedHeaders, ...kBrowserHeaders};
 
     try {
-      log.append(
-        '========== [Usage Request] ==========\nGET $url\n'
-        'X-Date: ${headers['x-date']}\nAuthorization: ***',
-      );
+      log.appendRequestLog('Usage', 'GET', url, headers);
       final response = await client
           .get(Uri.parse(url), headers: headers)
           .timeout(const Duration(seconds: 15));
-      log.append(
-        '========== [Usage Response] ${response.statusCode} ==========',
-      );
-      log.append(response.body);
+      log.appendResponseLog('Usage', response.statusCode, response.body);
       return _parse(response.statusCode, response.body);
     } on TimeoutException {
       return const UsageResult('火山方舟', [], 'queryTimeout');
