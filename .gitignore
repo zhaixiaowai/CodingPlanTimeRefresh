@@ -22,3 +22,6 @@ Thumbs.db
 
 ## Claude Code
 .claude/
+
+## Docs（开发设计文档，不入仓库跟踪）
+docs/superpowers/
