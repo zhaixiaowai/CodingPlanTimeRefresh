@@ -38,7 +38,8 @@ class LogService {
 
   /// 响应日志：统一信封（修 V13）。
   void appendResponseLog(String label, int statusCode, [String? body]) {
-    append('========== [$label Response] $statusCode ==========' +
-        (body == null ? '' : '\n$body'));
+    append(
+      '========== [$label Response] $statusCode ==========${body == null ? '' : '\n$body'}',
+    );
   }
 }

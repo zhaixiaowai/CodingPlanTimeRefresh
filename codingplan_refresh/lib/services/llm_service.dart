@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:codingplan_refresh/services/log_service.dart';
 import 'package:codingplan_refresh/utils/sse.dart';
-import 'package:codingplan_refresh/utils/user_agent.dart';
 
 /// 类型化 LLM 异常：携带本地化键 [l10nKey] 与格式参数 [args]，供调用方映射成
 /// 用户可见文案；[rawMessage] 保留原始错误详情（写日志用），与旧 MAUI
@@ -44,8 +43,6 @@ class LlmService {
     required String model,
     required String question,
     required void Function(String chunk) onChunk,
-    String? sessionId,
-    int retryCount = 0,
   }) async {
     if (apiUrl.trim().isEmpty) {
       throw LlmException('apiUrlNotConfigured', 'API URL 未配置');
@@ -63,30 +60,18 @@ class LlmService {
       'temperature': 0.9,
     });
 
-    // sessionId 由调用方传入（重试时复用同值，修 V1），null 则本次随机生成。
-    final claudeHeaders = claudeCliHeaders(
-      sessionId: sessionId ?? randomUuid(),
-      retryCount: retryCount,
-    );
-    log.appendRequestLog(
-      'LLM',
-      'POST',
-      apiUrl,
-      {
-        'Authorization': 'Bearer $apiKey',
-        'Content-Type': 'application/json',
-        'User-Agent': kLlmUserAgent,
-        ...claudeHeaders,
-      },
-      body: _prettyJson(body),
-    );
+    final reqLog = StringBuffer()
+      ..writeln('========== [Request] ==========')
+      ..writeln('POST $apiUrl')
+      ..writeln('Authorization: Bearer ***')
+      ..writeln('Content-Type: application/json')
+      ..writeln()
+      ..writeln(_prettyJson(body));
+    log.append(reqLog.toString());
 
     final request = http.Request('POST', Uri.parse(apiUrl));
     request.headers['Authorization'] = 'Bearer $apiKey';
     request.headers['Content-Type'] = 'application/json';
-    request.headers['User-Agent'] = kLlmUserAgent;
-    // claude-cli 伪装专用头（Session-Id 随机 UUID），让网络层判定为 claude-cli 流量。
-    claudeHeaders.forEach((k, v) => request.headers[k] = v);
     request.body = body;
 
     final client = http.Client();
@@ -95,7 +80,10 @@ class LlmService {
         const Duration(seconds: 120),
       );
 
-      log.appendResponseLog('LLM', response.statusCode);
+      final respLog = StringBuffer()
+        ..writeln('========== [Response] ${response.statusCode} ==========');
+      log.append(respLog.toString());
+
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final errBody = await response.stream.bytesToString();
         log.append(errBody);

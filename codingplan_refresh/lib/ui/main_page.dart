@@ -14,7 +14,6 @@ import '../services/log_service.dart';
 import '../services/usage_provider.dart';
 import '../services/scheduler_service.dart';
 import '../services/volc_ark_usage_provider.dart';
-import '../utils/user_agent.dart';
 import '../utils/vendor.dart';
 import '../platform/window_controller.dart';
 import 'widgets/config_panel.dart';
@@ -321,7 +320,7 @@ class _MainPageState extends State<MainPage> {
   /// _callLlmWithRetry 包裹（3 次重试）。失败**不清全局触发键**——自动失败的
   /// 「立即重试」由重试循环负责（isRetrying 防并发），下个整点才再触发（见
   /// _globalTriggerKey 说明，避免 A 成功 B 失败时 A 被重复打）。返回是否成功。
-  Future<bool> _callLlmOnce(String providerId, {required bool manual, String? sessionId, int retryCount = 0}) async {
+  Future<bool> _callLlmOnce(String providerId, {required bool manual}) async {
     if (providerId.isEmpty) return false;
     // firstWhere 用空对象 orElse：provider 已删（不在列表）时返回 id='' 占位，由
     // p.id.isEmpty 判定 return false——不抛 StateError（空列表 .first 抛）、不用错
@@ -351,8 +350,6 @@ class _MainPageState extends State<MainPage> {
         apiKey: p.apiKey,
         model: model,
         question: prompt,
-        sessionId: sessionId,
-        retryCount: retryCount,
         onChunk: (_) {},
       );
       if (mounted) {
@@ -386,20 +383,10 @@ class _MainPageState extends State<MainPage> {
     if (rs == null) return;
     if (rs.isRetrying) return;
     rs.isRetrying = true;
-    // 重试同会话复用同一 Session-Id，配合递增 retryCount，与真实 claude-cli 重试
-    // 指纹一致（修 V1）。
-    final sessionId = randomUuid();
     try {
       for (int attempt = 1; attempt <= 3; attempt++) {
         if (!mounted) return; // V2：dispose 后停止重试
-        if (await _callLlmOnce(
-          providerId,
-          manual: false,
-          sessionId: sessionId,
-          retryCount: attempt - 1,
-        )) {
-          break;
-        }
+        if (await _callLlmOnce(providerId, manual: false)) break;
         if (attempt < 3) {
           await Future.delayed(
             _retryGap + Duration(milliseconds: _random.nextInt(_retryJitterMs)),
