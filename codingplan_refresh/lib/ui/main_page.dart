@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 // 置顶图标对 push_pin/offline_pin_off 在 Flutter 内置 Icons 类缺失（offline_pin_off
 // 不存在），故引 material_symbols_icons 的 Symbols 类提供这两个不同图标互切。
@@ -17,6 +18,22 @@ import '../utils/vendor.dart';
 import '../platform/window_controller.dart';
 import 'widgets/config_panel.dart';
 import 'widgets/usage_frame.dart';
+
+/// 计算各 provider 的 jitter 延迟（毫秒）：首个 0（立即发），其余
+/// [minMs, minMs+rangeMs) 随机。提取为顶层纯函数便于单测覆盖延迟逻辑（修 V9）。
+List<int> jitterDelaysMs(
+  int count,
+  Random random, {
+  int minMs = 1000,
+  int rangeMs = 4000,
+}) {
+  final delays = List<int>.filled(count, 0);
+  for (int i = 1; i < count; i++) {
+    // rangeMs<=0 时无随机区间，恒为 minMs（nextInt(0) 非法，需保护）。
+    delays[i] = rangeMs > 0 ? minMs + random.nextInt(rangeMs) : minMs;
+  }
+  return delays;
+}
 
 /// 主窗口：mini 态（顶部 4 按钮 + 各 provider 用量框）与设置态（ConfigPanel）原地切换。
 ///
@@ -64,6 +81,12 @@ class _MainPageState extends State<MainPage> {
   final Map<String, ResultState> _results = {};
   Timer? _usageTimer;
   Timer? _triggerTimer;
+  // 定时触发多 provider 间的随机延迟源 + 调度的 jitter Timer（dispose 可取消）。
+  final Random _random = Random();
+  final List<Timer> _jitterTimers = [];
+  // 重试间隔常量（集中管理，避免字面量散落，修 V10）。
+  static const Duration _retryGap = Duration(seconds: 5);
+  static const int _retryJitterMs = 2000; // 重试间隔额外随机 0~2s，错开同厂商重试
   double _lastContentHeight = 0;
 
   // 当前视图：'mini'（用量框）| 'settings'（ConfigPanel 原地切换）。
@@ -108,6 +131,12 @@ class _MainPageState extends State<MainPage> {
   void dispose() {
     _triggerTimer?.cancel();
     _usageTimer?.cancel();
+    // 取消未触发的 jitter Timer：dispose 后不再发起新 provider，旧 State（含 API 密钥）
+    // 不被未完成的延迟闭包长期钉住（修 V5）。
+    for (final t in _jitterTimers) {
+      t.cancel();
+    }
+    _jitterTimers.clear();
     super.dispose();
   }
 
@@ -223,8 +252,40 @@ class _MainPageState extends State<MainPage> {
     if (!r.trigger) return;
     _setGlobalTriggerKey(r.key);
     widget.configService.save(_config);
+    _scheduleTriggerAllWithJitter();
+  }
+
+  /// 顺序调度各 provider 的定时调用，相邻两次之间加随机延迟（1~5 秒），
+  /// 避免多 provider 在同一触发时刻并发打 LLM（风控/限流友好）。
+  ///
+  /// 用独立 [Timer] 调度每个 provider 的发起（而非 `await Future.delayed` 串行）：
+  /// - [dispose] 可 cancel 未触发的 Timer，旧 State（含 API 密钥）不被长期钉住（修 V5）；
+  /// - 方法 void 无 Future，无未捕获异常风险（修 V8）；
+  /// - for-in 直接遍历 providers，无中间 List/索引（修 V11）。
+  ///
+  /// 残余风险（接受）：__global__ key 在调度前已持久化（防 6s tick 重复触发），若
+  /// jitter 窗口内进程崩溃或用户关窗，未触发的 provider 本整点漏发、下个整点补
+  /// （V1/V7）。保活工具 6h 一次触发，场景罕见且后果轻。jitter 期间 [_applyConfig]
+  /// 增删 provider：删除的 id 走 _callLlmWithRetry 的 _results 空检查安全跳过；新增
+  /// 的 provider 不在本轮调度，下个整点补（V4）。
+  void _scheduleTriggerAllWithJitter() {
+    // 防御性清理上一轮残留 Timer（__global__ key 去重已保证不重入）。
+    for (final t in _jitterTimers) {
+      t.cancel();
+    }
+    _jitterTimers.clear();
+    final delays = jitterDelaysMs(_config.providers.length, _random);
+    var i = 0;
     for (final p in _config.providers) {
-      _callLlmWithRetry(p.id);
+      final id = p.id;
+      final delay = Duration(milliseconds: delays[i]);
+      i++;
+      _jitterTimers.add(
+        Timer(delay, () {
+          if (!mounted) return;
+          _callLlmWithRetry(id);
+        }),
+      );
     }
   }
 
@@ -276,6 +337,9 @@ class _MainPageState extends State<MainPage> {
     rs.isBusy = true;
     if (mounted) setState(() {});
     try {
+      // V2：askStream 前复检 mounted——dispose 后不发起 HTTP，避免对已关闭窗口
+      // 继续打 LLM 耗配额（rs.isBusy 由 finally 复位）。
+      if (!mounted) return false;
       final model = p.model.isEmpty ? 'glm-5.1' : p.model;
       final prompt =
           '${widget.l10n.t('jokePrompt')}\nseed=${DateTime.now().millisecondsSinceEpoch % 10000}';
@@ -310,7 +374,10 @@ class _MainPageState extends State<MainPage> {
     }
   }
 
-  /// per-provider 重试循环：3 次×5s 间隔，用 rs.isRetrying 防并发。
+  /// per-provider 重试循环：3 次×（5s+0~2s 随机）间隔，用 rs.isRetrying 防并发。
+  /// 每次重试前复检 mounted——dispose 后停止重试，避免对已关闭窗口继续打 LLM 耗
+  /// 配额（修 V2）。重试间隔加随机 jitter，错开同厂商多 provider 重试时刻，与首次
+  /// 发起 jitter 配合缓解并发打 LLM 撞限流（修 V6）。
   Future<void> _callLlmWithRetry(String providerId) async {
     final rs = _results[providerId];
     if (rs == null) return;
@@ -318,8 +385,13 @@ class _MainPageState extends State<MainPage> {
     rs.isRetrying = true;
     try {
       for (int attempt = 1; attempt <= 3; attempt++) {
+        if (!mounted) return; // V2：dispose 后停止重试
         if (await _callLlmOnce(providerId, manual: false)) break;
-        if (attempt < 3) await Future.delayed(const Duration(seconds: 5));
+        if (attempt < 3) {
+          await Future.delayed(
+            _retryGap + Duration(milliseconds: _random.nextInt(_retryJitterMs)),
+          );
+        }
       }
     } finally {
       rs.isRetrying = false;
